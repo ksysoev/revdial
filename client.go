@@ -16,6 +16,16 @@ func newClient(conn net.Conn) *client {
 }
 
 func (c *client) register() error {
+	err := c.init([]byte{byte(noAuth)})
+	if err != nil {
+		return fmt.Errorf("failed to init client: %w", err)
+	}
+
+	err = c.handleRegister()
+	if err != nil {
+		return fmt.Errorf("failed to handle register: %w", err)
+	}
+
 	return nil
 }
 

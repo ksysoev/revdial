@@ -6,7 +6,7 @@ const (
 	v1 version = 1
 )
 
-type authMethod byte
+type authMethod uint8
 
 const (
 	noAuth                 authMethod = 0
