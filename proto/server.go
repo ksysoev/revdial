@@ -10,14 +10,14 @@ import (
 
 var ErrUnsupportedAuthMethod = fmt.Errorf("unsupported auth method")
 
-type state int32
+type State int32
 
 const (
-	connected    state = 0
-	processing   state = 1
-	registered   state = 2
-	bound        state = 3
-	disconnected state = 4
+	StateConnected    State = 0
+	StateProcessing   State = 1
+	StateRegistered   State = 2
+	StateBound        State = 3
+	StateDisconnected State = 4
 )
 
 type Server struct {
@@ -34,8 +34,12 @@ func NewServer(conn net.Conn) *Server {
 	}
 }
 
+func (s *Server) State() State {
+	return State(s.state.Load())
+}
+
 func (s *Server) Process() error {
-	if !s.state.CompareAndSwap(int32(connected), int32(processing)) {
+	if !s.state.CompareAndSwap(int32(StateConnected), int32(StateProcessing)) {
 		return fmt.Errorf("unexpected state: %d", s.state.Load())
 	}
 
@@ -54,7 +58,7 @@ func (s *Server) Process() error {
 }
 
 func (s *Server) Close() error {
-	s.state.Store(int32(disconnected))
+	s.state.Store(int32(StateDisconnected))
 
 	return s.conn.Close()
 }
@@ -141,7 +145,7 @@ func (s *Server) handleRegister() error {
 		return fmt.Errorf("failed to write register response: %w", err)
 	}
 
-	if s.state.CompareAndSwap(int32(processing), int32(registered)) {
+	if s.state.CompareAndSwap(int32(StateProcessing), int32(StateRegistered)) {
 		return fmt.Errorf("unexpected state: %d", s.state.Load())
 	}
 
@@ -165,7 +169,7 @@ func (s *Server) handleBind() error {
 
 	_, err = s.conn.Write([]byte{byte(v1), byte(success)})
 
-	if s.state.CompareAndSwap(int32(processing), int32(bound)) {
+	if s.state.CompareAndSwap(int32(StateProcessing), int32(StateBound)) {
 		return fmt.Errorf("unexpected state: %d", s.state.Load())
 	}
 
@@ -173,7 +177,7 @@ func (s *Server) handleBind() error {
 }
 
 func (s *Server) SendConnectCommand(id uint16) error {
-	if s.state.Load() == int32(registered) {
+	if s.state.Load() == int32(StateRegistered) {
 		return fmt.Errorf("unexpected state: %d", s.state.Load())
 	}
 
