@@ -1,6 +1,7 @@
 package revdial
 
 import (
+	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -83,4 +84,56 @@ func (s *server) handleAuth(method authMethod) error {
 	default:
 		return errUnsupportedAuthMethod
 	}
+}
+
+func (s *server) handleCommand() error {
+	buf := make([]byte, 2)
+	_, err := s.conn.Read(buf)
+	if err != nil {
+		return fmt.Errorf("failed to read command: %w", err)
+	}
+
+	ver := version(buf[0])
+	if ver != v1 {
+		return fmt.Errorf("unexpected version: %d", buf[0])
+	}
+
+	cmd := command(buf[1])
+	switch cmd {
+	case register:
+		return s.handleRegister()
+	case bind:
+		return s.handleBind()
+	default:
+		return fmt.Errorf("unsupported command: %d", cmd)
+	}
+}
+
+func (s *server) handleRegister() error {
+	_, err := s.conn.Write([]byte{byte(v1), byte(success)})
+	if err != nil {
+		return fmt.Errorf("failed to write register response: %w", err)
+	}
+
+	return nil
+}
+
+func (s *server) handleBind() error {
+	buf := make([]byte, 3)
+	_, err := s.conn.Read(buf)
+
+	if err != nil {
+		return fmt.Errorf("failed to read bind request: %w", err)
+	}
+
+	ver := version(buf[0])
+	if ver != v1 {
+		return fmt.Errorf("unexpected version: %d", buf[0])
+	}
+
+	_ = binary.BigEndian.Uint16(buf[1:3])
+
+	_, err = s.conn.Write([]byte{byte(v1), byte(success)})
+
+	return err
 }
