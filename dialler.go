@@ -10,18 +10,26 @@ import (
 	"github.com/ksysoev/revdial/proto"
 )
 
+type connRequest struct {
+	ctx context.Context
+	ch  chan net.Conn
+}
+
 type Dialer struct {
-	listen   string
-	listener net.Listener
-	wg       sync.WaitGroup
-	mu       sync.Mutex
-	cancel   context.CancelFunc
-	server   *proto.Server
+	listen    string
+	listener  net.Listener
+	wg        sync.WaitGroup
+	mu        sync.RWMutex
+	cancel    context.CancelFunc
+	server    *proto.Server
+	currentID uint16
+	requests  map[uint16]*connRequest
 }
 
 func NewDialer(listen string) *Dialer {
 	return &Dialer{
-		listen: listen,
+		listen:   listen,
+		requests: make(map[uint16]*connRequest),
 	}
 }
 
@@ -64,9 +72,30 @@ func (d *Dialer) Stop() error {
 }
 
 func (d *Dialer) DialContext(ctx context.Context, addr string) (net.Conn, error) {
-	// TODO: implement dial logic
+	d.mu.RLock()
+	s := d.server
+	d.mu.RUnlock()
 
-	return nil, fmt.Errorf("not implemented")
+	if s == nil || s.State() != proto.StateRegistered {
+		return nil, fmt.Errorf("no connection is available")
+	}
+
+	id := d.getID()
+	ch := d.addRequest(ctx, id)
+	defer d.removeRequest(id)
+
+	err := s.SendConnectCommand(id)
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to request connection: %w", err)
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil, ctx.Err()
+	case conn := <-ch:
+		return conn, nil
+	}
 }
 
 func (d *Dialer) serve(ctx context.Context) {
@@ -93,14 +122,63 @@ func (d *Dialer) serve(ctx context.Context) {
 			d.mu.Unlock()
 
 			if oldServer != nil {
-				server.Close()
+				oldServer.Close()
 			}
+
 		case proto.StateBound:
-			//TODO: handle bound state
+			id := s.ID()
+			req := d.removeRequest(id)
+
+			if req == nil {
+				s.Close()
+				continue
+			}
+
+			select {
+			case req.ch <- conn:
+			case <-req.ctx.Done():
+				s.Close()
+			}
+
 		default:
 			slog.ErrorContext(ctx, "unexpected state while handling incomming connection", slog.Any("state", s.State()))
 			s.Close()
 		}
 	}
 
+}
+
+func (d *Dialer) getID() uint16 {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	d.currentID++
+	return d.currentID
+}
+
+func (d *Dialer) addRequest(ctx context.Context, id uint16) <-chan net.Conn {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	ch := make(chan net.Conn, 1)
+	d.requests[id] = &connRequest{
+		ctx: ctx,
+		ch:  ch,
+	}
+
+	return ch
+}
+
+func (d *Dialer) removeRequest(id uint16) *connRequest {
+	d.mu.Lock()
+	defer d.mu.Unlock()
+
+	ch, ok := d.requests[id]
+	if !ok {
+		return nil
+	}
+
+	delete(d.requests, id)
+
+	return ch
 }

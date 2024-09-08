@@ -27,7 +27,6 @@ type Server struct {
 }
 
 func NewServer(conn net.Conn) *Server {
-
 	return &Server{
 		state: atomic.Int32{},
 		conn:  conn,
@@ -36,6 +35,10 @@ func NewServer(conn net.Conn) *Server {
 
 func (s *Server) State() State {
 	return State(s.state.Load())
+}
+
+func (s *Server) ID() uint16 {
+	return s.id
 }
 
 func (s *Server) Process() error {
