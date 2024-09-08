@@ -1,4 +1,4 @@
-package revdial
+package proto
 
 type version byte
 

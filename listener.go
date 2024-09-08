@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"net"
 	"sync"
+
+	"github.com/ksysoev/revdial/proto"
 )
 
 type Listener struct {
@@ -25,7 +27,10 @@ func Listen(ctx context.Context, dialerSrv string) (*Listener, error) {
 		return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
 	}
 
-	// TODO: add logic to initialize connection
+	client := proto.NewClient(conn)
+
+	err = client.Register(l.ctx)
+
 	l.wg.Add(1)
 	go func() {
 		<-l.ctx.Done()
