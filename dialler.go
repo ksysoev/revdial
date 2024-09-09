@@ -62,6 +62,10 @@ func (d *Dialer) Start(ctx context.Context) error {
 	return nil
 }
 
+func (d *Dialer) Addr() string {
+	return d.listener.Addr().String()
+}
+
 func (d *Dialer) Stop() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
