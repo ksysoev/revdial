@@ -150,7 +150,7 @@ func (s *Server) handleRegister() error {
 		return fmt.Errorf("failed to write register response: %w", err)
 	}
 
-	if s.state.CompareAndSwap(int32(StateProcessing), int32(StateRegistered)) {
+	if !s.state.CompareAndSwap(int32(StateProcessing), int32(StateRegistered)) {
 		return fmt.Errorf("unexpected state: %d", s.state.Load())
 	}
 
@@ -169,7 +169,7 @@ func (s *Server) handleBind() error {
 
 	_, err = s.conn.Write([]byte{byte(v1), byte(success)})
 
-	if s.state.CompareAndSwap(int32(StateProcessing), int32(StateBound)) {
+	if !s.state.CompareAndSwap(int32(StateProcessing), int32(StateBound)) {
 		return fmt.Errorf("unexpected state: %d", s.state.Load())
 	}
 
@@ -177,7 +177,7 @@ func (s *Server) handleBind() error {
 }
 
 func (s *Server) SendConnectCommand(id uint16) error {
-	if s.state.Load() == int32(StateRegistered) {
+	if s.state.Load() != int32(StateRegistered) {
 		return fmt.Errorf("unexpected state: %d", s.state.Load())
 	}
 

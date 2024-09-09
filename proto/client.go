@@ -32,7 +32,6 @@ func (c *Client) Commands() <-chan ClientConnet {
 
 func (c *Client) Register(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
-	defer cancel()
 
 	err := c.init([]byte{byte(noAuth)})
 	if err != nil {
