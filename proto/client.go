@@ -4,16 +4,19 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"log/slog"
 	"net"
+	"sync"
 )
 
 type ClientConnet struct {
-	id uint16
+	ID uint16
 }
 
 type Client struct {
 	conn net.Conn
 	cmds chan ClientConnet
+	wg   sync.WaitGroup
 }
 
 func NewClient(conn net.Conn) *Client {
@@ -21,6 +24,10 @@ func NewClient(conn net.Conn) *Client {
 		conn: conn,
 		cmds: make(chan ClientConnet),
 	}
+}
+
+func (c *Client) Commands() <-chan ClientConnet {
+	return c.cmds
 }
 
 func (c *Client) Register(ctx context.Context) error {
@@ -37,22 +44,32 @@ func (c *Client) Register(ctx context.Context) error {
 		return fmt.Errorf("failed to handle register: %w", err)
 	}
 
+	c.wg.Add(1)
 	go func() {
+		defer c.wg.Done()
 		<-ctx.Done()
-		c.Close()
+		c.conn.Close()
 	}()
 
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		default:
-			err := c.handleCommand(ctx)
-			if err != nil {
-				return fmt.Errorf("failed to handle command: %w", err)
+	go func() {
+		defer c.wg.Done()
+		defer cancel()
+		defer close(c.cmds)
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				err := c.handleCommand(ctx)
+				if err != nil {
+					slog.Error("failed to handle command", slog.Any("error", err))
+					return
+				}
 			}
 		}
-	}
+	}()
+	return nil
 }
 
 func (c *Client) init(methods []byte) error {
@@ -83,7 +100,22 @@ func (c *Client) init(methods []byte) error {
 	return err
 }
 
+func (c *Client) Bind(id uint16) error {
+	err := c.init([]byte{byte(noAuth)})
+	if err != nil {
+		return fmt.Errorf("failed to init client: %w", err)
+	}
+
+	err = c.handleBind(id)
+	if err != nil {
+		return fmt.Errorf("failed to handle register: %w", err)
+	}
+
+	return nil
+}
+
 func (c *Client) Close() error {
+	defer c.wg.Wait()
 	return c.conn.Close()
 }
 
@@ -129,6 +161,36 @@ func (c *Client) handleRegister() error {
 	}
 }
 
+func (c *Client) handleBind(id uint16) error {
+	buf := make([]byte, 4)
+	buf[0] = byte(v1)
+	buf[1] = byte(bind)
+	binary.BigEndian.PutUint16(buf[2:], id)
+
+	_, err := c.conn.Write(buf)
+	if err != nil {
+		return fmt.Errorf("failed to write connect command: %w", err)
+	}
+
+	resp := make([]byte, 2)
+	_, err = c.conn.Read(resp)
+	if err != nil {
+		return fmt.Errorf("failed to read connect response: %w", err)
+	}
+
+	if version(resp[0]) != v1 {
+		return fmt.Errorf("unexpected version: %d", resp[0])
+	}
+
+	res := result(resp[1])
+
+	if res != success {
+		return fmt.Errorf("failed to bind")
+	}
+
+	return nil
+}
+
 func (c *Client) handleCommand(ctx context.Context) error {
 	buf := make([]byte, 2)
 	_, err := c.conn.Read(buf)
@@ -162,7 +224,7 @@ func (c *Client) handleConnect(ctx context.Context) error {
 	case <-ctx.Done():
 		return nil
 	case c.cmds <- ClientConnet{
-		id: id,
+		ID: id,
 	}:
 	}
 

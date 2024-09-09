@@ -156,19 +156,14 @@ func (s *Server) handleRegister() error {
 }
 
 func (s *Server) handleBind() error {
-	buf := make([]byte, 3)
+	buf := make([]byte, 2)
 	_, err := s.conn.Read(buf)
 
 	if err != nil {
 		return fmt.Errorf("failed to read bind request: %w", err)
 	}
 
-	ver := version(buf[0])
-	if ver != v1 {
-		return fmt.Errorf("unexpected version: %d", buf[0])
-	}
-
-	s.id = binary.BigEndian.Uint16(buf[1:3])
+	s.id = binary.BigEndian.Uint16(buf)
 
 	_, err = s.conn.Write([]byte{byte(v1), byte(success)})
 

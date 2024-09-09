@@ -10,41 +10,67 @@ import (
 )
 
 type Listener struct {
+	addr   string
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
 	conn   net.Conn
 	dialer net.Dialer
+	client *proto.Client
 }
 
 func Listen(ctx context.Context, dialerSrv string) (*Listener, error) {
-	l := &Listener{}
+	l := &Listener{addr: dialerSrv}
 	l.ctx, l.cancel = context.WithCancel(ctx)
 
-	conn, err := l.dialer.DialContext(l.ctx, "tcp", dialerSrv)
+	conn, err := l.dialer.DialContext(l.ctx, "tcp", l.addr)
 	if err != nil {
 		l.cancel()
 		return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
 	}
 
-	client := proto.NewClient(conn)
-
-	err = client.Register(l.ctx)
-
 	l.wg.Add(1)
 	go func() {
+		defer l.wg.Done()
 		<-l.ctx.Done()
 		conn.Close()
-		l.wg.Done()
 	}()
+
+	l.client = proto.NewClient(conn)
+
+	err = l.client.Register(l.ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to register client: %w", err)
+	}
 
 	return l, nil
 }
 
 func (l *Listener) Accept() (net.Conn, error) {
-	// TODO: implement accept logic
 
-	return nil, fmt.Errorf("not implemented")
+	select {
+	case <-l.ctx.Done():
+		return nil, fmt.Errorf("listener closed")
+	case cmd, ok := <-l.client.Commands():
+		if !ok {
+			return nil, fmt.Errorf("connection closed")
+		}
+
+		conn, err := l.dialer.DialContext(l.ctx, "tcp", l.addr)
+		if err != nil {
+			l.cancel()
+			return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
+		}
+
+		client := proto.NewClient(conn)
+		err = client.Bind(cmd.ID)
+		if err != nil {
+			conn.Close()
+			return nil, fmt.Errorf("failed to bind connection: %w", err)
+		}
+
+		return conn, nil
+	}
 }
 
 func (l *Listener) Close() error {
@@ -53,4 +79,8 @@ func (l *Listener) Close() error {
 	l.wg.Wait()
 
 	return err
+}
+
+func (l *Listener) Addr() net.Addr {
+	return l.conn.RemoteAddr()
 }
