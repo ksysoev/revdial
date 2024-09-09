@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func TestListenerDialler(t *testing.T) {
+func TestListenerDialer(t *testing.T) {
 	// Create a new dialer
 	dialer := NewDialer(":0")
 	err := dialer.Start(context.Background())
@@ -33,9 +33,9 @@ func TestListenerDialler(t *testing.T) {
 		conn, err := listener.Accept()
 		if err != nil {
 			t.Errorf("failed to accept connection: %v", err)
+		} else {
+			conn.Close()
 		}
-
-		conn.Close()
 	}()
 
 	conn, err := dialer.DialContext(context.Background(), addr)

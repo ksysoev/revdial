@@ -96,6 +96,8 @@ func (s *Server) handleInit() error {
 		if err != nil {
 			return fmt.Errorf("failed to handle auth method: %w", err)
 		}
+
+		return nil
 	}
 
 	_, err = s.conn.Write([]byte{byte(v1), byte(noAcceptableAuthMethod)})

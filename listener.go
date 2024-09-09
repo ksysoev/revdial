@@ -14,7 +14,6 @@ type Listener struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	wg     sync.WaitGroup
-	conn   net.Conn
 	dialer net.Dialer
 	client *proto.Client
 }
@@ -75,12 +74,13 @@ func (l *Listener) Accept() (net.Conn, error) {
 
 func (l *Listener) Close() error {
 	l.cancel()
-	err := l.conn.Close()
+	err := l.client.Close()
 	l.wg.Wait()
 
 	return err
 }
 
 func (l *Listener) Addr() net.Addr {
-	return l.conn.RemoteAddr()
+	// TODO: implement this
+	panic("not implemented")
 }

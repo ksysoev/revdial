@@ -51,6 +51,7 @@ func (c *Client) Register(ctx context.Context) error {
 		c.conn.Close()
 	}()
 
+	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		defer cancel()
@@ -108,7 +109,7 @@ func (c *Client) Bind(id uint16) error {
 
 	err = c.handleBind(id)
 	if err != nil {
-		return fmt.Errorf("failed to handle register: %w", err)
+		return fmt.Errorf("failed to handle bind: %w", err)
 	}
 
 	return nil
