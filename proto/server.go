@@ -21,8 +21,8 @@ const (
 )
 
 type Server struct {
-	state atomic.Int32
 	conn  net.Conn
+	state atomic.Int32
 	id    uint16
 }
 
@@ -47,7 +47,6 @@ func (s *Server) Process() error {
 	}
 
 	if err := s.handleInit(); err != nil {
-
 		s.conn.Close()
 		return fmt.Errorf("failed to handle init: %w", err)
 	}
@@ -68,27 +67,26 @@ func (s *Server) Close() error {
 
 func (s *Server) handleInit() error {
 	buf := make([]byte, 2)
-	_, err := s.conn.Read(buf)
-	if err != nil {
+
+	if _, err := s.conn.Read(buf); err != nil {
 		return fmt.Errorf("failed to read auth methods: %w", err)
 	}
 
-	ver := version(buf[0])
-
-	if ver != v1 {
+	if version(buf[0]) != v1 {
 		return fmt.Errorf("unexpected version: %d", buf[0])
 	}
 
 	nmethods := int8(buf[1])
 	methods := make([]byte, nmethods)
-	_, err = s.conn.Read(methods)
-	if err != nil {
+
+	if _, err := s.conn.Read(methods); err != nil {
 		return fmt.Errorf("failed to read auth methods: %w", err)
 	}
 
 	for _, m := range methods {
 		method := authMethod(m)
 		err := s.handleAuth(method)
+
 		if errors.Is(err, ErrUnsupportedAuthMethod) {
 			continue
 		}
@@ -100,8 +98,7 @@ func (s *Server) handleInit() error {
 		return nil
 	}
 
-	_, err = s.conn.Write([]byte{byte(v1), byte(noAcceptableAuthMethod)})
-	if err != nil {
+	if _, err := s.conn.Write([]byte{byte(v1), byte(noAcceptableAuthMethod)}); err != nil {
 		return fmt.Errorf("failed to write auth method response: %w", err)
 	}
 
@@ -111,10 +108,10 @@ func (s *Server) handleInit() error {
 func (s *Server) handleAuth(method authMethod) error {
 	switch method {
 	case noAuth:
-		_, err := s.conn.Write([]byte{byte(v1), byte(noAuth)})
-		if err != nil {
+		if _, err := s.conn.Write([]byte{byte(v1), byte(noAuth)}); err != nil {
 			return fmt.Errorf("failed to write auth method response: %w", err)
 		}
+
 		return nil
 	default:
 		return ErrUnsupportedAuthMethod
@@ -123,13 +120,12 @@ func (s *Server) handleAuth(method authMethod) error {
 
 func (s *Server) handleCommand() error {
 	buf := make([]byte, 2)
-	_, err := s.conn.Read(buf)
-	if err != nil {
+
+	if _, err := s.conn.Read(buf); err != nil {
 		return fmt.Errorf("failed to read command: %w", err)
 	}
 
-	ver := version(buf[0])
-	if ver != v1 {
+	if version(buf[0]) != v1 {
 		return fmt.Errorf("unexpected version: %d", buf[0])
 	}
 
@@ -145,8 +141,7 @@ func (s *Server) handleCommand() error {
 }
 
 func (s *Server) handleRegister() error {
-	_, err := s.conn.Write([]byte{byte(v1), byte(success)})
-	if err != nil {
+	if _, err := s.conn.Write([]byte{byte(v1), byte(success)}); err != nil {
 		return fmt.Errorf("failed to write register response: %w", err)
 	}
 
@@ -159,21 +154,22 @@ func (s *Server) handleRegister() error {
 
 func (s *Server) handleBind() error {
 	buf := make([]byte, 2)
-	_, err := s.conn.Read(buf)
 
-	if err != nil {
+	if _, err := s.conn.Read(buf); err != nil {
 		return fmt.Errorf("failed to read bind request: %w", err)
 	}
 
 	s.id = binary.BigEndian.Uint16(buf)
 
-	_, err = s.conn.Write([]byte{byte(v1), byte(success)})
+	if _, err := s.conn.Write([]byte{byte(v1), byte(success)}); err != nil {
+		return fmt.Errorf("failed to write bind response: %w", err)
+	}
 
 	if !s.state.CompareAndSwap(int32(StateProcessing), int32(StateBound)) {
 		return fmt.Errorf("unexpected state: %d", s.state.Load())
 	}
 
-	return err
+	return nil
 }
 
 func (s *Server) SendConnectCommand(id uint16) error {
@@ -186,25 +182,22 @@ func (s *Server) SendConnectCommand(id uint16) error {
 	buf[1] = byte(connect)
 	binary.BigEndian.PutUint16(buf[2:], id)
 
-	_, err := s.conn.Write(buf)
-	if err != nil {
+	if _, err := s.conn.Write(buf); err != nil {
 		return fmt.Errorf("failed to send connect command: %w", err)
 	}
 
 	buf = make([]byte, 2)
-	_, err = s.conn.Read(buf)
-	if err != nil {
+
+	if _, err := s.conn.Read(buf); err != nil {
 		return fmt.Errorf("failed to read connect response: %w", err)
 	}
 
-	ver := version(buf[0])
-	if ver != v1 {
+	if version(buf[0]) != v1 {
 		return fmt.Errorf("unexpected version: %d", buf[0])
 	}
 
-	res := result(buf[1])
-	if res != success {
-		return fmt.Errorf("failed to connect: %d", res)
+	if result(buf[1]) != success {
+		return fmt.Errorf("failed to connect: %d", buf[1])
 	}
 
 	return nil

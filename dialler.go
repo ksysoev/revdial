@@ -16,14 +16,14 @@ type connRequest struct {
 }
 
 type Dialer struct {
-	listen    string
 	listener  net.Listener
-	wg        sync.WaitGroup
-	mu        sync.RWMutex
 	cancel    context.CancelFunc
 	server    *proto.Server
-	currentID uint16
 	requests  map[uint16]*connRequest
+	listen    string
+	wg        sync.WaitGroup
+	mu        sync.RWMutex
+	currentID uint16
 }
 
 func NewDialer(listen string) *Dialer {
@@ -46,13 +46,13 @@ func (d *Dialer) Start(ctx context.Context) error {
 
 	d.listener = l
 
-	d.wg.Add(1)
+	d.wg.Add(2)
+
 	go func() {
 		defer d.wg.Done()
 		d.serve(ctx)
 	}()
 
-	d.wg.Add(1)
 	go func() {
 		<-ctx.Done()
 		d.listener.Close()
@@ -75,7 +75,7 @@ func (d *Dialer) Stop() error {
 	return d.listener.Close()
 }
 
-func (d *Dialer) DialContext(ctx context.Context, addr string) (net.Conn, error) {
+func (d *Dialer) DialContext(ctx context.Context, _ string) (net.Conn, error) {
 	d.mu.RLock()
 	s := d.server
 	d.mu.RUnlock()
@@ -149,7 +149,6 @@ func (d *Dialer) serve(ctx context.Context) {
 			s.Close()
 		}
 	}
-
 }
 
 func (d *Dialer) getID() uint16 {
@@ -157,6 +156,7 @@ func (d *Dialer) getID() uint16 {
 	defer d.mu.Unlock()
 
 	d.currentID++
+
 	return d.currentID
 }
 

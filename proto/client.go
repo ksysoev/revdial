@@ -33,24 +33,24 @@ func (c *Client) Commands() <-chan ClientConnet {
 func (c *Client) Register(ctx context.Context) error {
 	ctx, cancel := context.WithCancel(ctx)
 
-	err := c.init([]byte{byte(noAuth)})
-	if err != nil {
+	if err := c.init([]byte{byte(noAuth)}); err != nil {
+		cancel()
 		return fmt.Errorf("failed to init client: %w", err)
 	}
 
-	err = c.handleRegister()
-	if err != nil {
+	if err := c.handleRegister(); err != nil {
+		cancel()
 		return fmt.Errorf("failed to handle register: %w", err)
 	}
 
-	c.wg.Add(1)
+	c.wg.Add(2)
+
 	go func() {
 		defer c.wg.Done()
 		<-ctx.Done()
 		c.conn.Close()
 	}()
 
-	c.wg.Add(1)
 	go func() {
 		defer c.wg.Done()
 		defer cancel()
@@ -69,13 +69,13 @@ func (c *Client) Register(ctx context.Context) error {
 			}
 		}
 	}()
+
 	return nil
 }
 
 func (c *Client) init(methods []byte) error {
 	buf := make([]byte, 0, 2+len(methods))
-	buf = append(buf, byte(v1))
-	buf = append(buf, byte(len(methods)))
+	buf = append(buf, byte(v1), byte(len(methods)))
 	buf = append(buf, methods...)
 
 	_, err := c.conn.Write(buf)
@@ -95,9 +95,7 @@ func (c *Client) init(methods []byte) error {
 		return fmt.Errorf("unexpected version: %d", resp[0])
 	}
 
-	c.handleAuth(authMethod(resp[1]))
-
-	return err
+	return c.handleAuth(authMethod(resp[1]))
 }
 
 func (c *Client) Bind(id uint16) error {
@@ -135,14 +133,13 @@ func (c *Client) handleRegister() error {
 	buf[0] = byte(v1)
 	buf[1] = byte(register)
 
-	_, err := c.conn.Write(buf)
-	if err != nil {
+	if _, err := c.conn.Write(buf); err != nil {
 		return fmt.Errorf("failed to write connect command: %w", err)
 	}
 
 	resp := make([]byte, 2)
-	_, err = c.conn.Read(resp)
-	if err != nil {
+
+	if _, err := c.conn.Read(resp); err != nil {
 		return fmt.Errorf("failed to read connect response: %w", err)
 	}
 
@@ -150,14 +147,13 @@ func (c *Client) handleRegister() error {
 		return fmt.Errorf("unexpected version: %d", resp[0])
 	}
 
-	res := result(resp[1])
-	switch res {
+	switch result(resp[1]) {
 	case success:
 		return nil
 	case failure:
 		return fmt.Errorf("failed to register")
 	default:
-		return fmt.Errorf("unexpected result: %d", res)
+		return fmt.Errorf("unexpected result: %d", resp[1])
 	}
 }
 
@@ -167,14 +163,13 @@ func (c *Client) handleBind(id uint16) error {
 	buf[1] = byte(bind)
 	binary.BigEndian.PutUint16(buf[2:], id)
 
-	_, err := c.conn.Write(buf)
-	if err != nil {
+	if _, err := c.conn.Write(buf); err != nil {
 		return fmt.Errorf("failed to write connect command: %w", err)
 	}
 
 	resp := make([]byte, 2)
-	_, err = c.conn.Read(resp)
-	if err != nil {
+
+	if _, err := c.conn.Read(resp); err != nil {
 		return fmt.Errorf("failed to read connect response: %w", err)
 	}
 
@@ -182,9 +177,7 @@ func (c *Client) handleBind(id uint16) error {
 		return fmt.Errorf("unexpected version: %d", resp[0])
 	}
 
-	res := result(resp[1])
-
-	if res != success {
+	if result(resp[1]) != success {
 		return fmt.Errorf("failed to bind")
 	}
 
@@ -193,13 +186,12 @@ func (c *Client) handleBind(id uint16) error {
 
 func (c *Client) handleCommand(ctx context.Context) error {
 	buf := make([]byte, 2)
-	_, err := c.conn.Read(buf)
-	if err != nil {
+
+	if _, err := c.conn.Read(buf); err != nil {
 		return fmt.Errorf("failed to read command: %w", err)
 	}
 
-	ver := version(buf[0])
-	if ver != v1 {
+	if version(buf[0]) != v1 {
 		return fmt.Errorf("unexpected version: %d", buf[0])
 	}
 

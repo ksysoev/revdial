@@ -10,12 +10,12 @@ import (
 )
 
 type Listener struct {
-	addr   string
 	ctx    context.Context
 	cancel context.CancelFunc
-	wg     sync.WaitGroup
-	dialer net.Dialer
 	client *proto.Client
+	dialer net.Dialer
+	addr   string
+	wg     sync.WaitGroup
 }
 
 func Listen(ctx context.Context, dialerSrv string) (*Listener, error) {
@@ -29,6 +29,7 @@ func Listen(ctx context.Context, dialerSrv string) (*Listener, error) {
 	}
 
 	l.wg.Add(1)
+
 	go func() {
 		defer l.wg.Done()
 		<-l.ctx.Done()
@@ -46,7 +47,6 @@ func Listen(ctx context.Context, dialerSrv string) (*Listener, error) {
 }
 
 func (l *Listener) Accept() (net.Conn, error) {
-
 	select {
 	case <-l.ctx.Done():
 		return nil, fmt.Errorf("listener closed")
@@ -62,8 +62,8 @@ func (l *Listener) Accept() (net.Conn, error) {
 		}
 
 		client := proto.NewClient(conn)
-		err = client.Bind(cmd.ID)
-		if err != nil {
+
+		if err := client.Bind(cmd.ID); err != nil {
 			conn.Close()
 			return nil, fmt.Errorf("failed to bind connection: %w", err)
 		}

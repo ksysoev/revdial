@@ -9,12 +9,17 @@ import (
 func TestListenerDialer(t *testing.T) {
 	// Create a new dialer
 	dialer := NewDialer(":0")
-	err := dialer.Start(context.Background())
-	if err != nil {
+
+	if err := dialer.Start(context.Background()); err != nil {
 		t.Fatalf("failed to start dialer: %v", err)
 	}
 
-	defer dialer.Stop()
+	defer func() {
+		err := dialer.Stop()
+		if err != nil {
+			t.Errorf("failed to stop dialer: %v", err)
+		}
+	}()
 
 	addr := dialer.listener.Addr().String()
 
