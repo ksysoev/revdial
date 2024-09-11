@@ -4,8 +4,6 @@ const (
 	versionV1 byte = 1
 )
 
-type authMethod byte
-
 const (
 	noAuth                 byte = 0
 	noAcceptableAuthMethod byte = 255
