@@ -72,7 +72,7 @@ func (s *Server) handleInit() error {
 		return fmt.Errorf("failed to read auth methods: %w", err)
 	}
 
-	if version(buf[0]) != v1 {
+	if buf[0] != versionV1 {
 		return fmt.Errorf("unexpected version: %d", buf[0])
 	}
 
@@ -84,8 +84,7 @@ func (s *Server) handleInit() error {
 	}
 
 	for _, m := range methods {
-		method := authMethod(m)
-		err := s.handleAuth(method)
+		err := s.handleAuth(m)
 
 		if errors.Is(err, ErrUnsupportedAuthMethod) {
 			continue
@@ -98,17 +97,17 @@ func (s *Server) handleInit() error {
 		return nil
 	}
 
-	if _, err := s.conn.Write([]byte{byte(v1), byte(noAcceptableAuthMethod)}); err != nil {
+	if _, err := s.conn.Write([]byte{versionV1, noAcceptableAuthMethod}); err != nil {
 		return fmt.Errorf("failed to write auth method response: %w", err)
 	}
 
 	return fmt.Errorf("no acceptable auth method")
 }
 
-func (s *Server) handleAuth(method authMethod) error {
+func (s *Server) handleAuth(method byte) error {
 	switch method {
 	case noAuth:
-		if _, err := s.conn.Write([]byte{byte(v1), byte(noAuth)}); err != nil {
+		if _, err := s.conn.Write([]byte{versionV1, noAuth}); err != nil {
 			return fmt.Errorf("failed to write auth method response: %w", err)
 		}
 
@@ -125,23 +124,22 @@ func (s *Server) handleCommand() error {
 		return fmt.Errorf("failed to read command: %w", err)
 	}
 
-	if version(buf[0]) != v1 {
+	if buf[0] != versionV1 {
 		return fmt.Errorf("unexpected version: %d", buf[0])
 	}
 
-	cmd := command(buf[1])
-	switch cmd {
-	case register:
+	switch buf[1] {
+	case cmdRegister:
 		return s.handleRegister()
-	case bind:
+	case cmdBind:
 		return s.handleBind()
 	default:
-		return fmt.Errorf("unsupported command: %d", cmd)
+		return fmt.Errorf("unsupported command: %d", buf[1])
 	}
 }
 
 func (s *Server) handleRegister() error {
-	if _, err := s.conn.Write([]byte{byte(v1), byte(success)}); err != nil {
+	if _, err := s.conn.Write([]byte{versionV1, resSuccess}); err != nil {
 		return fmt.Errorf("failed to write register response: %w", err)
 	}
 
@@ -161,7 +159,7 @@ func (s *Server) handleBind() error {
 
 	s.id = binary.BigEndian.Uint16(buf)
 
-	if _, err := s.conn.Write([]byte{byte(v1), byte(success)}); err != nil {
+	if _, err := s.conn.Write([]byte{versionV1, resSuccess}); err != nil {
 		return fmt.Errorf("failed to write bind response: %w", err)
 	}
 
@@ -178,8 +176,8 @@ func (s *Server) SendConnectCommand(id uint16) error {
 	}
 
 	buf := make([]byte, 4)
-	buf[0] = byte(v1)
-	buf[1] = byte(connect)
+	buf[0] = versionV1
+	buf[1] = cmdConnect
 	binary.BigEndian.PutUint16(buf[2:], id)
 
 	if _, err := s.conn.Write(buf); err != nil {
@@ -192,11 +190,11 @@ func (s *Server) SendConnectCommand(id uint16) error {
 		return fmt.Errorf("failed to read connect response: %w", err)
 	}
 
-	if version(buf[0]) != v1 {
+	if buf[0] != versionV1 {
 		return fmt.Errorf("unexpected version: %d", buf[0])
 	}
 
-	if result(buf[1]) != success {
+	if buf[1] != resSuccess {
 		return fmt.Errorf("failed to connect: %d", buf[1])
 	}
 

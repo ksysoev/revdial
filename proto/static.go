@@ -1,29 +1,23 @@
 package proto
 
-type version byte
-
 const (
-	v1 version = 1
+	versionV1 byte = 1
 )
 
-type authMethod uint8
+type authMethod byte
 
 const (
-	noAuth                 authMethod = 0
-	noAcceptableAuthMethod authMethod = 255
+	noAuth                 byte = 0
+	noAcceptableAuthMethod byte = 255
 )
 
-type command byte
-
 const (
-	register command = 1
-	connect  command = 2
-	bind     command = 3
+	cmdRegister byte = 1
+	cmdConnect  byte = 2
+	cmdBind     byte = 3
 )
 
-type result byte
-
 const (
-	success result = 0
-	failure result = 1
+	resSuccess byte = 0
+	resFailure byte = 1
 )
