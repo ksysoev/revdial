@@ -116,25 +116,16 @@ func (c *Client) Close() error {
 // Finally, it calls the handleAuth function with the response as input.
 // If any error occurs during the process, it is returned with an appropriate error message.
 func (c *Client) establish(methods []byte) error {
-	buf := make([]byte, 0, 2+len(methods))
-	buf = append(buf, versionV1, byte(len(methods)))
-	buf = append(buf, methods...)
+	req := make([]byte, 0, 1+len(methods))
+	req = append(req, byte(len(methods)))
+	req = append(req, methods...)
 
-	if _, err := c.conn.Write(buf); err != nil {
-		return fmt.Errorf("failed to write auth methods: %w", err)
+	resp, err := c.sentRequest(req, 1)
+	if err != nil {
+		return fmt.Errorf("failed to establish connection: %w", err)
 	}
 
-	resp := make([]byte, 2)
-
-	if _, err := c.conn.Read(resp); err != nil {
-		return fmt.Errorf("failed to read auth method response: %w", err)
-	}
-
-	if resp[0] != versionV1 {
-		return fmt.Errorf("unexpected version: %d", resp[0])
-	}
-
-	return c.handleAuth(resp[1])
+	return c.handleAuth(resp[0])
 }
 
 // handleAuth handles the authentication method for the client.
@@ -162,31 +153,18 @@ func (c *Client) handleAuth(method byte) error {
 // If there is an error while writing the command or reading the response, it returns
 // an error with the corresponding error message.
 func (c *Client) handleRegister() error {
-	buf := make([]byte, 2)
-	buf[0] = versionV1
-	buf[1] = cmdRegister
-
-	if _, err := c.conn.Write(buf); err != nil {
-		return fmt.Errorf("failed to write connect command: %w", err)
+	resp, err := c.sentRequest([]byte{cmdRegister}, 1)
+	if err != nil {
+		return fmt.Errorf("failed to register: %w", err)
 	}
 
-	resp := make([]byte, 2)
-
-	if _, err := c.conn.Read(resp); err != nil {
-		return fmt.Errorf("failed to read connect response: %w", err)
-	}
-
-	if resp[0] != versionV1 {
-		return fmt.Errorf("unexpected version: %d", resp[0])
-	}
-
-	switch resp[1] {
+	switch resp[0] {
 	case resSuccess:
 		return nil
 	case resFailure:
 		return fmt.Errorf("failed to register")
 	default:
-		return fmt.Errorf("unexpected result: %d", resp[1])
+		return fmt.Errorf("unexpected result: %d", resp[0])
 	}
 }
 
@@ -194,26 +172,16 @@ func (c *Client) handleRegister() error {
 // It writes the command to the connection and reads the response.
 // If the command is successful, it returns nil. Otherwise, it returns an error.
 func (c *Client) handleBind(id uint16) error {
-	buf := make([]byte, 4)
-	buf[0] = versionV1
-	buf[1] = cmdBind
-	binary.BigEndian.PutUint16(buf[2:], id)
+	req := make([]byte, 3)
+	req[0] = cmdBind
+	binary.BigEndian.PutUint16(req[1:], id)
 
-	if _, err := c.conn.Write(buf); err != nil {
-		return fmt.Errorf("failed to write connect command: %w", err)
+	resp, err := c.sentRequest(req, 1)
+	if err != nil {
+		return fmt.Errorf("failed to bind: %w", err)
 	}
 
-	resp := make([]byte, 2)
-
-	if _, err := c.conn.Read(resp); err != nil {
-		return fmt.Errorf("failed to read connect response: %w", err)
-	}
-
-	if resp[0] != versionV1 {
-		return fmt.Errorf("unexpected version: %d", resp[0])
-	}
-
-	if resp[1] != resSuccess {
+	if resp[0] != resSuccess {
 		return fmt.Errorf("failed to bind")
 	}
 
@@ -230,21 +198,16 @@ func (c *Client) handleBind(id uint16) error {
 // The function takes a context.Context as a parameter to support cancellation and timeouts.
 // It returns an error if there was a problem reading the command or if the command is unsupported.
 func (c *Client) handleCommand(ctx context.Context) error {
-	buf := make([]byte, 2)
-
-	if _, err := c.conn.Read(buf); err != nil {
+	msg, err := c.readMsg(1)
+	if err != nil {
 		return fmt.Errorf("failed to read command: %w", err)
 	}
 
-	if buf[0] != versionV1 {
-		return fmt.Errorf("unexpected version: %d", buf[0])
-	}
-
-	switch buf[1] {
+	switch msg[0] {
 	case cmdConnect:
 		return c.handleConnect(ctx)
 	default:
-		return fmt.Errorf("unsupported command: %d", buf[1])
+		return fmt.Errorf("unsupported command: %d", msg[0])
 	}
 }
 
@@ -275,4 +238,40 @@ func (c *Client) handleConnect(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// sentRequest sends a request to the server and returns the response.
+// It takes the request payload as a byte slice and the expected length of the response.
+// The function appends the request payload to a buffer along with the versionV1 byte.
+// Then it writes the buffer to the connection.
+// If there is an error while writing the request, it returns an error with a formatted message.
+// Finally, it calls the readMsg function to read the response from the server and returns it along with any error encountered.
+func (c *Client) sentRequest(req []byte, respLen uint8) ([]byte, error) {
+	buf := make([]byte, 0, 1+len(req))
+	buf = append(buf, versionV1)
+	buf = append(buf, req...)
+
+	if _, err := c.conn.Write(buf); err != nil {
+		return nil, fmt.Errorf("failed to write request: %w", err)
+	}
+
+	return c.readMsg(respLen)
+}
+
+// readMsg reads a message from the connection with the specified length.
+// It returns the message as a byte slice and an error if any.
+// The length of the message is specified by msgLen.
+// If an error occurs while reading the response, it returns an error with a formatted message.
+// If the first byte of the message is not equal to versionV1, it returns an error with the unexpected version.
+func (c *Client) readMsg(msgLen uint8) ([]byte, error) {
+	buf := make([]byte, msgLen+1)
+
+	if _, err := c.conn.Read(buf); err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if buf[0] != versionV1 {
+		return nil, fmt.Errorf("unexpected version: %d", buf[0])
+	}
+	return buf[1:], nil
 }
