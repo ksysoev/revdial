@@ -4,9 +4,11 @@ import (
 	"context"
 	"encoding/binary"
 	"fmt"
+	"io"
 	"log/slog"
-	"net"
 	"sync"
+
+	"github.com/google/uuid"
 )
 
 type ClientConnect struct {
@@ -15,7 +17,7 @@ type ClientConnect struct {
 
 type Client struct {
 	cancel context.CancelFunc
-	conn   net.Conn
+	conn   io.ReadWriteCloser
 	cmds   chan ClientConnect
 	wg     sync.WaitGroup
 }
@@ -23,7 +25,7 @@ type Client struct {
 // NewClient creates a new instance of the Client struct.
 // It takes a net.Conn as a parameter and returns a pointer to the Client struct.
 // The Client struct represents a client connection and contains a connection and a channel for commands.
-func NewClient(conn net.Conn) *Client {
+func NewClient(conn io.ReadWriteCloser) *Client {
 	return &Client{
 		conn: conn,
 		cmds: make(chan ClientConnect),
@@ -38,7 +40,7 @@ func (c *Client) Commands() <-chan ClientConnect {
 // Register registers the client with the server.
 // It takes a context.Context as a parameter and returns an error.
 // The Register method establishes a connection with the server and handles the registration process.
-func (c *Client) Register(ctx context.Context) error {
+func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
 	ctx, c.cancel = context.WithCancel(ctx)
 
 	if err := c.establish([]byte{noAuth}); err != nil {
@@ -46,7 +48,7 @@ func (c *Client) Register(ctx context.Context) error {
 		return fmt.Errorf("failed to init client: %w", err)
 	}
 
-	if err := c.handleRegister(); err != nil {
+	if err := c.handleRegister(id); err != nil {
 		c.cancel()
 		return fmt.Errorf("failed to handle register: %w", err)
 	}
@@ -152,8 +154,12 @@ func (c *Client) handleAuth(method byte) error {
 // it returns an error with the message "unexpected result: <response>".
 // If there is an error while writing the command or reading the response, it returns
 // an error with the corresponding error message.
-func (c *Client) handleRegister() error {
-	resp, err := sendRequest(c.conn, []byte{cmdRegister})
+func (c *Client) handleRegister(id uuid.UUID) error {
+	req := make([]byte, 0, 17)
+	req = append(req, cmdRegister)
+	req = append(req, id[:]...)
+
+	resp, err := sendRequest(c.conn, req)
 	if err != nil {
 		return fmt.Errorf("failed to register: %w", err)
 	}

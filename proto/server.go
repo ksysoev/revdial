@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"net"
 	"sync/atomic"
+
+	"github.com/google/uuid"
 )
 
 var ErrUnsupportedAuthMethod = fmt.Errorf("unsupported auth method")
@@ -21,9 +23,10 @@ const (
 )
 
 type Server struct {
-	conn  net.Conn
-	state atomic.Int32
-	id    uint16
+	conn     net.Conn
+	state    atomic.Int32
+	id       uint16
+	serverID uuid.UUID
 }
 
 // NewServer creates a new Server instance with the given net.Conn.
@@ -182,6 +185,18 @@ func (s *Server) handleCommand() error {
 // It writes a register response to the connection and updates the server state to StateRegistered.
 // Returns an error if writing the response fails or if the server state is not StateProcessing.
 func (s *Server) handleRegister() error {
+	buf := make([]byte, 16)
+	if _, err := s.conn.Read(buf); err != nil {
+		return fmt.Errorf("failed to read register request: %w", err)
+	}
+
+	id, err := uuid.FromBytes(buf)
+	if err != nil {
+		return fmt.Errorf("failed to parse UUID: %w", err)
+	}
+
+	s.serverID = id
+
 	if _, err := s.conn.Write([]byte{versionV1, resSuccess}); err != nil {
 		return fmt.Errorf("failed to write register response: %w", err)
 	}

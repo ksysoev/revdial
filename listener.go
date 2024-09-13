@@ -6,6 +6,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/ksysoev/revdial/proto"
 )
 
@@ -38,7 +39,7 @@ func Listen(ctx context.Context, dialerSrv string) (*Listener, error) {
 
 	l.client = proto.NewClient(conn)
 
-	err = l.client.Register(l.ctx)
+	err = l.client.Register(l.ctx, uuid.New())
 	if err != nil {
 		return nil, fmt.Errorf("failed to register client: %w", err)
 	}

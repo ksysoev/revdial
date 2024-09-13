@@ -19,8 +19,11 @@ func TestNewClient(t *testing.T) {
 		t.Error("Expected cmds channel to be initialized, but got nil")
 	}
 }
+
 func TestCommands(t *testing.T) {
 	conn, _ := net.Pipe()
+	defer conn.Close()
+
 	client := NewClient(conn)
 
 	commands := client.Commands()
