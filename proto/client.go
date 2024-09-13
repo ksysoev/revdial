@@ -120,12 +120,12 @@ func (c *Client) establish(methods []byte) error {
 	req = append(req, byte(len(methods)))
 	req = append(req, methods...)
 
-	resp, err := c.sentRequest(req, 1)
+	resp, err := sendRequest(c.conn, req)
 	if err != nil {
 		return fmt.Errorf("failed to establish connection: %w", err)
 	}
 
-	return c.handleAuth(resp[0])
+	return c.handleAuth(resp)
 }
 
 // handleAuth handles the authentication method for the client.
@@ -153,18 +153,18 @@ func (c *Client) handleAuth(method byte) error {
 // If there is an error while writing the command or reading the response, it returns
 // an error with the corresponding error message.
 func (c *Client) handleRegister() error {
-	resp, err := c.sentRequest([]byte{cmdRegister}, 1)
+	resp, err := sendRequest(c.conn, []byte{cmdRegister})
 	if err != nil {
 		return fmt.Errorf("failed to register: %w", err)
 	}
 
-	switch resp[0] {
+	switch resp {
 	case resSuccess:
 		return nil
 	case resFailure:
 		return fmt.Errorf("failed to register")
 	default:
-		return fmt.Errorf("unexpected result: %d", resp[0])
+		return fmt.Errorf("unexpected result: %d", resp)
 	}
 }
 
@@ -176,12 +176,12 @@ func (c *Client) handleBind(id uint16) error {
 	req[0] = cmdBind
 	binary.BigEndian.PutUint16(req[1:], id)
 
-	resp, err := c.sentRequest(req, 1)
+	resp, err := sendRequest(c.conn, req)
 	if err != nil {
 		return fmt.Errorf("failed to bind: %w", err)
 	}
 
-	if resp[0] != resSuccess {
+	if resp != resSuccess {
 		return fmt.Errorf("failed to bind")
 	}
 
@@ -198,16 +198,16 @@ func (c *Client) handleBind(id uint16) error {
 // The function takes a context.Context as a parameter to support cancellation and timeouts.
 // It returns an error if there was a problem reading the command or if the command is unsupported.
 func (c *Client) handleCommand(ctx context.Context) error {
-	msg, err := c.readMsg(1)
+	msg, err := readMsg(c.conn)
 	if err != nil {
 		return fmt.Errorf("failed to read command: %w", err)
 	}
 
-	switch msg[0] {
+	switch msg {
 	case cmdConnect:
 		return c.handleConnect(ctx)
 	default:
-		return fmt.Errorf("unsupported command: %d", msg[0])
+		return fmt.Errorf("unsupported command: %d", msg)
 	}
 }
 
@@ -238,40 +238,4 @@ func (c *Client) handleConnect(ctx context.Context) error {
 	}
 
 	return nil
-}
-
-// sentRequest sends a request to the server and returns the response.
-// It takes the request payload as a byte slice and the expected length of the response.
-// The function appends the request payload to a buffer along with the versionV1 byte.
-// Then it writes the buffer to the connection.
-// If there is an error while writing the request, it returns an error with a formatted message.
-// Finally, it calls the readMsg function to read the response from the server and returns it along with any error encountered.
-func (c *Client) sentRequest(req []byte, respLen uint8) ([]byte, error) {
-	buf := make([]byte, 0, 1+len(req))
-	buf = append(buf, versionV1)
-	buf = append(buf, req...)
-
-	if _, err := c.conn.Write(buf); err != nil {
-		return nil, fmt.Errorf("failed to write request: %w", err)
-	}
-
-	return c.readMsg(respLen)
-}
-
-// readMsg reads a message from the connection with the specified length.
-// It returns the message as a byte slice and an error if any.
-// The length of the message is specified by msgLen.
-// If an error occurs while reading the response, it returns an error with a formatted message.
-// If the first byte of the message is not equal to versionV1, it returns an error with the unexpected version.
-func (c *Client) readMsg(msgLen uint8) ([]byte, error) {
-	buf := make([]byte, msgLen+1)
-
-	if _, err := c.conn.Read(buf); err != nil {
-		return nil, fmt.Errorf("failed to read response: %w", err)
-	}
-
-	if buf[0] != versionV1 {
-		return nil, fmt.Errorf("unexpected version: %d", buf[0])
-	}
-	return buf[1:], nil
 }

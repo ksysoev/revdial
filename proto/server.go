@@ -78,27 +78,17 @@ func (s *Server) SendConnectCommand(id uint16) error {
 		return fmt.Errorf("unexpected state: %d", s.state.Load())
 	}
 
-	buf := make([]byte, 4)
-	buf[0] = versionV1
-	buf[1] = cmdConnect
-	binary.BigEndian.PutUint16(buf[2:], id)
+	req := make([]byte, 3)
+	req[0] = cmdConnect
+	binary.BigEndian.PutUint16(req[1:], id)
 
-	if _, err := s.conn.Write(buf); err != nil {
+	resp, err := sendRequest(s.conn, req)
+	if err != nil {
 		return fmt.Errorf("failed to send connect command: %w", err)
 	}
 
-	buf = make([]byte, 2)
-
-	if _, err := s.conn.Read(buf); err != nil {
-		return fmt.Errorf("failed to read connect response: %w", err)
-	}
-
-	if buf[0] != versionV1 {
-		return fmt.Errorf("unexpected version: %d", buf[0])
-	}
-
-	if buf[1] != resSuccess {
-		return fmt.Errorf("failed to connect: %d", buf[1])
+	if resp != resSuccess {
+		return fmt.Errorf("failed to connect: %d", resp)
 	}
 
 	return nil
@@ -119,17 +109,12 @@ func (s *Server) Close() error {
 // If no acceptable authentication method is found, it writes a response to the connection and returns an error.
 // The function returns an error if any read or write operation fails.
 func (s *Server) handleInit() error {
-	buf := make([]byte, 2)
-
-	if _, err := s.conn.Read(buf); err != nil {
+	msg, err := readMsg(s.conn)
+	if err != nil {
 		return fmt.Errorf("failed to read auth methods: %w", err)
 	}
 
-	if buf[0] != versionV1 {
-		return fmt.Errorf("unexpected version: %d", buf[0])
-	}
-
-	nmethods := int8(buf[1])
+	nmethods := int8(msg)
 	methods := make([]byte, nmethods)
 
 	if _, err := s.conn.Read(methods); err != nil {
@@ -178,23 +163,18 @@ func (s *Server) handleAuth(method byte) error {
 // It reads a command from the connection and performs the corresponding action based on the command type.
 // Returns an error if there was a failure in reading the command or if the command is unsupported.
 func (s *Server) handleCommand() error {
-	buf := make([]byte, 2)
-
-	if _, err := s.conn.Read(buf); err != nil {
+	msg, err := readMsg(s.conn)
+	if err != nil {
 		return fmt.Errorf("failed to read command: %w", err)
 	}
 
-	if buf[0] != versionV1 {
-		return fmt.Errorf("unexpected version: %d", buf[0])
-	}
-
-	switch buf[1] {
+	switch msg {
 	case cmdRegister:
 		return s.handleRegister()
 	case cmdBind:
 		return s.handleBind()
 	default:
-		return fmt.Errorf("unsupported command: %d", buf[1])
+		return fmt.Errorf("unsupported command: %d", msg)
 	}
 }
 
