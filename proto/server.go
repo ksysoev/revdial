@@ -1,7 +1,6 @@
 package proto
 
 import (
-	"encoding/binary"
 	"errors"
 	"fmt"
 	"net"
@@ -23,10 +22,9 @@ const (
 )
 
 type Server struct {
-	conn     net.Conn
-	state    atomic.Int32
-	id       uint16
-	serverID uuid.UUID
+	conn  net.Conn
+	state atomic.Int32
+	id    uuid.UUID
 }
 
 // NewServer creates a new Server instance with the given net.Conn.
@@ -44,7 +42,7 @@ func (s *Server) State() State {
 }
 
 // ID returns the ID of binded connection.
-func (s *Server) ID() uint16 {
+func (s *Server) ID() uuid.UUID {
 	return s.id
 }
 
@@ -76,14 +74,14 @@ func (s *Server) Process() error {
 // The function writes the command to the connection and reads the response.
 // It returns an error if any of the operations fail, such as writing to the connection,
 // reading the response, or encountering unexpected states or versions.
-func (s *Server) SendConnectCommand(id uint16) error {
+func (s *Server) SendConnectCommand(id uuid.UUID) error {
 	if s.state.Load() != int32(StateRegistered) {
 		return fmt.Errorf("unexpected state: %d", s.state.Load())
 	}
 
-	req := make([]byte, 3)
-	req[0] = cmdConnect
-	binary.BigEndian.PutUint16(req[1:], id)
+	req := make([]byte, 0, 17)
+	req = append(req, cmdConnect)
+	req = append(req, id[:]...)
 
 	resp, err := sendRequest(s.conn, req)
 	if err != nil {
@@ -195,7 +193,7 @@ func (s *Server) handleRegister() error {
 		return fmt.Errorf("failed to parse UUID: %w", err)
 	}
 
-	s.serverID = id
+	s.id = id
 
 	if _, err := s.conn.Write([]byte{versionV1, resSuccess}); err != nil {
 		return fmt.Errorf("failed to write register response: %w", err)
@@ -214,13 +212,18 @@ func (s *Server) handleRegister() error {
 // If the state is not StateProcessing, it returns an error with the current state.
 // Otherwise, it returns nil.
 func (s *Server) handleBind() error {
-	buf := make([]byte, 2)
+	buf := make([]byte, 16)
 
 	if _, err := s.conn.Read(buf); err != nil {
 		return fmt.Errorf("failed to read bind request: %w", err)
 	}
 
-	s.id = binary.BigEndian.Uint16(buf)
+	id, err := uuid.FromBytes(buf)
+	if err != nil {
+		return fmt.Errorf("failed to parse UUID: %w", err)
+	}
+
+	s.id = id
 
 	if _, err := s.conn.Write([]byte{versionV1, resSuccess}); err != nil {
 		return fmt.Errorf("failed to write bind response: %w", err)

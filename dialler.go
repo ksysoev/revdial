@@ -7,6 +7,7 @@ import (
 	"net"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/ksysoev/revdial/proto"
 )
 
@@ -16,20 +17,19 @@ type connRequest struct {
 }
 
 type Dialer struct {
-	listener  net.Listener
-	cancel    context.CancelFunc
-	server    *proto.Server
-	requests  map[uint16]*connRequest
-	listen    string
-	wg        sync.WaitGroup
-	mu        sync.RWMutex
-	currentID uint16
+	listener net.Listener
+	cancel   context.CancelFunc
+	server   *proto.Server
+	requests map[uuid.UUID]*connRequest
+	listen   string
+	wg       sync.WaitGroup
+	mu       sync.RWMutex
 }
 
 func NewDialer(listen string) *Dialer {
 	return &Dialer{
 		listen:   listen,
-		requests: make(map[uint16]*connRequest),
+		requests: make(map[uuid.UUID]*connRequest),
 	}
 }
 
@@ -84,7 +84,7 @@ func (d *Dialer) DialContext(ctx context.Context, _ string) (net.Conn, error) {
 		return nil, fmt.Errorf("no connection is available")
 	}
 
-	id := d.getID()
+	id := uuid.New()
 	ch := d.addRequest(ctx, id)
 	defer d.removeRequest(id)
 
@@ -105,6 +105,8 @@ func (d *Dialer) DialContext(ctx context.Context, _ string) (net.Conn, error) {
 func (d *Dialer) serve(ctx context.Context) {
 	defer d.wg.Done()
 
+	id := uuid.Nil
+
 	for {
 		conn, err := d.listener.Accept()
 		if err != nil {
@@ -119,7 +121,14 @@ func (d *Dialer) serve(ctx context.Context) {
 
 		switch s.State() {
 		case proto.StateRegistered:
-			// TODO: What to do with registered server?
+			// TODO: handle multiple connections
+			if id != uuid.Nil && id != s.ID() {
+				s.Close()
+				continue
+			}
+
+			id = s.ID()
+
 			d.mu.Lock()
 			oldServer := d.server
 			d.server = s
@@ -151,16 +160,7 @@ func (d *Dialer) serve(ctx context.Context) {
 	}
 }
 
-func (d *Dialer) getID() uint16 {
-	d.mu.Lock()
-	defer d.mu.Unlock()
-
-	d.currentID++
-
-	return d.currentID
-}
-
-func (d *Dialer) addRequest(ctx context.Context, id uint16) <-chan net.Conn {
+func (d *Dialer) addRequest(ctx context.Context, id uuid.UUID) <-chan net.Conn {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
@@ -173,7 +173,7 @@ func (d *Dialer) addRequest(ctx context.Context, id uint16) <-chan net.Conn {
 	return ch
 }
 
-func (d *Dialer) removeRequest(id uint16) *connRequest {
+func (d *Dialer) removeRequest(id uuid.UUID) *connRequest {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 

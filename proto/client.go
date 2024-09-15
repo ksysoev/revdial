@@ -2,7 +2,6 @@ package proto
 
 import (
 	"context"
-	"encoding/binary"
 	"fmt"
 	"io"
 	"log/slog"
@@ -12,7 +11,7 @@ import (
 )
 
 type ClientConnect struct {
-	ID uint16
+	ID uuid.UUID
 }
 
 type Client struct {
@@ -88,7 +87,7 @@ func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
 // The ID parameter represents the identifier used for binding.
 // This function initializes the client and handles the bind operation.
 // It returns an error if the client initialization or bind operation fails.
-func (c *Client) Bind(id uint16) error {
+func (c *Client) Bind(id uuid.UUID) error {
 	if err := c.establish([]byte{noAuth}); err != nil {
 		return fmt.Errorf("failed to init client: %w", err)
 	}
@@ -177,10 +176,10 @@ func (c *Client) handleRegister(id uuid.UUID) error {
 // handleBind sends a bind command to the server with the specified ID.
 // It writes the command to the connection and reads the response.
 // If the command is successful, it returns nil. Otherwise, it returns an error.
-func (c *Client) handleBind(id uint16) error {
-	req := make([]byte, 3)
-	req[0] = cmdBind
-	binary.BigEndian.PutUint16(req[1:], id)
+func (c *Client) handleBind(id uuid.UUID) error {
+	req := make([]byte, 0, 17)
+	req = append(req, cmdBind)
+	req = append(req, id[:]...)
 
 	resp, err := sendRequest(c.conn, req)
 	if err != nil {
@@ -224,12 +223,15 @@ func (c *Client) handleCommand(ctx context.Context) error {
 // After sending the command, it writes a connect response to the connection.
 // Returns an error if there is any issue reading, writing, or sending the command.
 func (c *Client) handleConnect(ctx context.Context) error {
-	buf := make([]byte, 2)
+	buf := make([]byte, 16)
 	if _, err := c.conn.Read(buf); err != nil {
 		return fmt.Errorf("failed to read connect request: %w", err)
 	}
 
-	id := binary.BigEndian.Uint16(buf)
+	id, err := uuid.FromBytes(buf)
+	if err != nil {
+		return fmt.Errorf("failed to parse UUID: %w", err)
+	}
 
 	select {
 	case <-ctx.Done():
