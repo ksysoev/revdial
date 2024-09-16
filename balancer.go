@@ -31,8 +31,9 @@ func (b *balancer) AddConnection(serv *proto.Server) {
 
 	for i, conn := range b.connections {
 		if conn.ID() == serv.ID() {
-			conn.Close()
+			_ = conn.Close()
 			b.connections[i] = serv
+
 			return
 		}
 	}
@@ -47,8 +48,10 @@ func (b *balancer) RemoveConnection(id uuid.UUID) {
 
 	for i, conn := range b.connections {
 		if conn.ID() == id {
-			conn.Close()
+			_ = conn.Close()
+
 			b.connections = append(b.connections[:i], b.connections[i+1:]...)
+
 			return
 		}
 	}
