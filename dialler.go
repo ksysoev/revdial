@@ -19,7 +19,7 @@ type connRequest struct {
 type Dialer struct {
 	listener net.Listener
 	cancel   context.CancelFunc
-	server   *proto.Server
+	lb       *balancer
 	requests map[uuid.UUID]*connRequest
 	listen   string
 	wg       sync.WaitGroup
@@ -29,6 +29,7 @@ type Dialer struct {
 func NewDialer(listen string) *Dialer {
 	return &Dialer{
 		listen:   listen,
+		lb:       newBalancer(),
 		requests: make(map[uuid.UUID]*connRequest),
 	}
 }
@@ -76,9 +77,7 @@ func (d *Dialer) Stop() error {
 }
 
 func (d *Dialer) DialContext(ctx context.Context, _ string) (net.Conn, error) {
-	d.mu.RLock()
-	s := d.server
-	d.mu.RUnlock()
+	s := d.lb.Next()
 
 	if s == nil || s.State() != proto.StateRegistered {
 		return nil, fmt.Errorf("no connection is available")
@@ -105,8 +104,6 @@ func (d *Dialer) DialContext(ctx context.Context, _ string) (net.Conn, error) {
 func (d *Dialer) serve(ctx context.Context) {
 	defer d.wg.Done()
 
-	id := uuid.Nil
-
 	for {
 		conn, err := d.listener.Accept()
 		if err != nil {
@@ -121,22 +118,7 @@ func (d *Dialer) serve(ctx context.Context) {
 
 		switch s.State() {
 		case proto.StateRegistered:
-			// TODO: handle multiple connections
-			if id != uuid.Nil && id != s.ID() {
-				s.Close()
-				continue
-			}
-
-			id = s.ID()
-
-			d.mu.Lock()
-			oldServer := d.server
-			d.server = s
-			d.mu.Unlock()
-
-			if oldServer != nil {
-				oldServer.Close()
-			}
+			d.lb.AddConnection(s)
 
 		case proto.StateBound:
 			id := s.ID()
