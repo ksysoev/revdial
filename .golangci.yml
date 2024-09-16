@@ -60,6 +60,8 @@ issues:
     - path: _test\.go$
       linters:
         - goconst
-
+exclude-files:
+  - _mock\.go$
+  
 run:
   issues-exit-code: 1
