@@ -78,7 +78,11 @@ func TestDialer_DialContext_ConnectionAvailable(t *testing.T) {
 	dialer := NewDialer(":0")
 	err := dialer.Start(context.Background())
 	require.NoError(t, err, "Dialer should start without error")
-	defer dialer.Stop()
+
+	defer func() {
+		err := dialer.Stop()
+		assert.NoError(t, err, "Dialer should stop without error")
+	}()
 
 	ready := make(chan struct{})
 	done := make(chan struct{})
@@ -123,7 +127,11 @@ func TestDialer_DialContext_ContextCancelled(t *testing.T) {
 	dialer := NewDialer(":0")
 	err := dialer.Start(context.Background())
 	require.NoError(t, err, "Dialer should start without error")
-	defer dialer.Stop()
+
+	defer func() {
+		err := dialer.Stop()
+		assert.NoError(t, err, "Dialer should stop without error")
+	}()
 
 	ready := make(chan struct{})
 	done := make(chan struct{})
@@ -170,7 +178,11 @@ func TestDialer_DialContext_FailedToSendConnectCommand(t *testing.T) {
 	dialer := NewDialer(":0")
 	err := dialer.Start(context.Background())
 	require.NoError(t, err, "Dialer should start without error")
-	defer dialer.Stop()
+
+	defer func() {
+		err := dialer.Stop()
+		assert.NoError(t, err, "Dialer should stop without error")
+	}()
 
 	ready := make(chan struct{})
 	go func() {
