@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/google/uuid"
+	"github.com/ksysoev/revdial/connmng"
 	"github.com/ksysoev/revdial/proto"
 )
 
@@ -19,7 +20,7 @@ type connRequest struct {
 type Dialer struct {
 	listener net.Listener
 	cancel   context.CancelFunc
-	lb       *balancer
+	lb       *connmng.ConnManager
 	requests map[uuid.UUID]*connRequest
 	listen   string
 	wg       sync.WaitGroup
@@ -29,7 +30,7 @@ type Dialer struct {
 func NewDialer(listen string) *Dialer {
 	return &Dialer{
 		listen:   listen,
-		lb:       newBalancer(),
+		lb:       connmng.New(),
 		requests: make(map[uuid.UUID]*connRequest),
 	}
 }
@@ -77,7 +78,7 @@ func (d *Dialer) Stop() error {
 }
 
 func (d *Dialer) DialContext(ctx context.Context, _ string) (net.Conn, error) {
-	s := d.lb.Next()
+	s := d.lb.GetConn()
 
 	if s == nil || s.State() != proto.StateRegistered {
 		return nil, fmt.Errorf("no connection is available")
