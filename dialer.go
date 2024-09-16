@@ -56,9 +56,9 @@ func (d *Dialer) Start(ctx context.Context) error {
 	}()
 
 	go func() {
+		defer d.wg.Done()
 		<-ctx.Done()
 		d.listener.Close()
-		d.wg.Done()
 	}()
 
 	return nil
@@ -71,6 +71,12 @@ func (d *Dialer) Addr() string {
 func (d *Dialer) Stop() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
+
+	if d.cancel == nil {
+		return nil
+	}
+
+	d.cancel()
 
 	defer d.wg.Wait()
 
@@ -103,8 +109,6 @@ func (d *Dialer) DialContext(ctx context.Context, _ string) (net.Conn, error) {
 }
 
 func (d *Dialer) serve(ctx context.Context) {
-	defer d.wg.Done()
-
 	for {
 		conn, err := d.listener.Accept()
 		if err != nil {
