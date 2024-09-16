@@ -20,7 +20,7 @@ type connRequest struct {
 type Dialer struct {
 	listener net.Listener
 	cancel   context.CancelFunc
-	lb       *connmng.ConnManager
+	cm       *connmng.ConnManager
 	requests map[uuid.UUID]*connRequest
 	listen   string
 	wg       sync.WaitGroup
@@ -30,7 +30,7 @@ type Dialer struct {
 func NewDialer(listen string) *Dialer {
 	return &Dialer{
 		listen:   listen,
-		lb:       connmng.New(),
+		cm:       connmng.New(),
 		requests: make(map[uuid.UUID]*connRequest),
 	}
 }
@@ -78,7 +78,7 @@ func (d *Dialer) Stop() error {
 }
 
 func (d *Dialer) DialContext(ctx context.Context, _ string) (net.Conn, error) {
-	s := d.lb.GetConn()
+	s := d.cm.GetConn()
 
 	if s == nil || s.State() != proto.StateRegistered {
 		return nil, fmt.Errorf("no connection is available")
@@ -119,7 +119,7 @@ func (d *Dialer) serve(ctx context.Context) {
 
 		switch s.State() {
 		case proto.StateRegistered:
-			d.lb.AddConnection(s)
+			d.cm.AddConnection(s)
 
 		case proto.StateBound:
 			id := s.ID()

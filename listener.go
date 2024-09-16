@@ -4,38 +4,40 @@ import (
 	"context"
 	"fmt"
 	"net"
-	"sync"
 
 	"github.com/google/uuid"
 	"github.com/ksysoev/revdial/proto"
 )
 
+var ErrListenerClosed = fmt.Errorf("listener closed")
+
 type Listener struct {
 	ctx    context.Context
 	cancel context.CancelFunc
 	client *proto.Client
-	dialer net.Dialer
-	addr   string
-	wg     sync.WaitGroup
+	dialer *net.Dialer
+	addr   net.Addr
 }
 
+// Listen creates a new listener that listens for incoming connections.
 func Listen(ctx context.Context, dialerSrv string) (*Listener, error) {
-	l := &Listener{addr: dialerSrv}
+	addr, err := net.ResolveTCPAddr("tcp", dialerSrv)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve address: %w", err)
+	}
+
+	l := &Listener{
+		addr:   addr,
+		dialer: &net.Dialer{},
+	}
+
 	l.ctx, l.cancel = context.WithCancel(ctx)
 
-	conn, err := l.dialer.DialContext(l.ctx, "tcp", l.addr)
+	conn, err := l.dialer.DialContext(l.ctx, "tcp", l.addr.String())
 	if err != nil {
 		l.cancel()
 		return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
 	}
-
-	l.wg.Add(1)
-
-	go func() {
-		defer l.wg.Done()
-		<-l.ctx.Done()
-		conn.Close()
-	}()
 
 	l.client = proto.NewClient(conn)
 
@@ -47,16 +49,18 @@ func Listen(ctx context.Context, dialerSrv string) (*Listener, error) {
 	return l, nil
 }
 
+// Accept waits for and returns the next connection to the listener.
+// It returns an error if the listener is closed.
 func (l *Listener) Accept() (net.Conn, error) {
 	select {
 	case <-l.ctx.Done():
-		return nil, fmt.Errorf("listener closed")
+		return nil, ErrListenerClosed
 	case cmd, ok := <-l.client.Commands():
 		if !ok {
-			return nil, fmt.Errorf("connection closed")
+			return nil, ErrListenerClosed
 		}
 
-		conn, err := l.dialer.DialContext(l.ctx, "tcp", l.addr)
+		conn, err := l.dialer.DialContext(l.ctx, "tcp", l.addr.String())
 		if err != nil {
 			l.cancel()
 			return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
@@ -73,15 +77,14 @@ func (l *Listener) Accept() (net.Conn, error) {
 	}
 }
 
+// Close closes the listener and the underlying connection.
 func (l *Listener) Close() error {
 	l.cancel()
-	err := l.client.Close()
-	l.wg.Wait()
 
-	return err
+	return l.client.Close()
 }
 
+// Addr returns the address of remote dialer server.
 func (l *Listener) Addr() net.Addr {
-	// TODO: implement this
-	panic("not implemented")
+	return l.addr
 }
