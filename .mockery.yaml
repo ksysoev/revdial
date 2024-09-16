@@ -1,0 +1,12 @@
+with-expecter: true
+mock-build-tags: "!compile"
+inpackage: true
+filename: "{{.InterfaceName}}_mock.go"
+dir: "{{.InterfaceDir}}"
+mockname: "Mock{{.InterfaceName}}"
+outpkg: "{{.PackageName}}"
+packages:
+  github.com/ksysoev/revdial/connmng:
+    interfaces:
+      ServerConn:
+        inpackage: true
