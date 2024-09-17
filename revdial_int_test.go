@@ -43,7 +43,7 @@ func TestListenerDialer(t *testing.T) {
 		}
 	}()
 
-	conn, err := dialer.DialContext(context.Background(), addr)
+	conn, err := dialer.DialContext(context.Background())
 	if err != nil {
 		t.Fatalf("failed to dial: %v", err)
 	}

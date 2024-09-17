@@ -83,7 +83,7 @@ func (d *Dialer) Stop() error {
 	return d.listener.Close()
 }
 
-func (d *Dialer) DialContext(ctx context.Context, _ string) (net.Conn, error) {
+func (d *Dialer) DialContext(ctx context.Context) (net.Conn, error) {
 	s := d.cm.GetConn()
 
 	if s == nil || s.State() != proto.StateRegistered {

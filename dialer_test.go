@@ -69,7 +69,7 @@ func TestDialer_DialContext_NoConnectionAvailable(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	_, err := dialer.DialContext(ctx, "")
+	_, err := dialer.DialContext(ctx)
 	assert.Error(t, err, "DialContext should return an error when no connection is available")
 	assert.Equal(t, "no connection is available", err.Error())
 }
@@ -110,7 +110,7 @@ func TestDialer_DialContext_ConnectionAvailable(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := dialer.DialContext(ctx, "")
+	conn, err := dialer.DialContext(ctx)
 	require.NoError(t, err, "DialContext should not return an error when a connection is available")
 	assert.NotNil(t, conn, "DialContext should return a valid connection")
 
@@ -160,7 +160,7 @@ func TestDialer_DialContext_ContextCancelled(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 
-	conn, err := dialer.DialContext(ctx, "")
+	conn, err := dialer.DialContext(ctx)
 
 	assert.Error(t, err, "DialContext should return an error when the context is cancelled")
 	assert.Nil(t, conn, "DialContext should not return a connection when the context is cancelled")
@@ -202,7 +202,7 @@ func TestDialer_DialContext_FailedToSendConnectCommand(t *testing.T) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	conn, err := dialer.DialContext(ctx, "")
+	conn, err := dialer.DialContext(ctx)
 
 	assert.Error(t, err, "DialContext should return an error when the connect command fails")
 	assert.Nil(t, conn, "DialContext should not return a connection when the connect command fails")
