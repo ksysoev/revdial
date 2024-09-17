@@ -104,6 +104,11 @@ func (c *Client) Bind(id uuid.UUID) error {
 // Returns an error if there was a problem closing the connection.
 func (c *Client) Close() error {
 	defer c.wg.Wait()
+
+	if c.cancel == nil {
+		return nil
+	}
+
 	c.cancel()
 
 	return c.conn.Close()
