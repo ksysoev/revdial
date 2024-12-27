@@ -157,21 +157,76 @@ func (s *Server) handleInit() error {
 	return fmt.Errorf("no acceptable auth method")
 }
 
-// handleAuth handles the authentication method for the server.
-// It takes a byte parameter representing the authentication method.
-// If the method is noAuth, it writes the authentication method response to the connection and returns nil.
-// If the method is not supported, it returns an error of type ErrUnsupportedAuthMethod.
+// handleAuth determines the appropriate authentication method for the connection and processes it accordingly.
+// Returns an error if the method is unsupported or if any operation fails during processing.
 func (s *Server) handleAuth(method byte) error {
 	switch method {
 	case noAuth:
+		if !s.noAuth {
+			return ErrUnsupportedAuthMethod
+		}
+
 		if _, err := s.conn.Write([]byte{versionV1, noAuth}); err != nil {
 			return fmt.Errorf("failed to write auth method response: %w", err)
 		}
 
 		return nil
+	case userPassAuth:
+		if s.userPassAuth == nil {
+			return ErrUnsupportedAuthMethod
+		}
+
+		return s.handleUserPassAuth()
 	default:
 		return ErrUnsupportedAuthMethod
 	}
+}
+
+// handleUserPassAuth processes user password authentication for the connection.
+// It reads and verifies the username and password, then responds with success or failure.
+func (s *Server) handleUserPassAuth() error {
+	userLen, err := sendRequest(s.conn, []byte{versionV1, userPassAuth})
+	if err != nil {
+		return fmt.Errorf("failed to send user pass auth request: %w", err)
+	}
+
+	if int(userLen) == 0 {
+		return fmt.Errorf("failed to read username length")
+	}
+
+	username := make([]byte, int(userLen))
+	if _, err := s.conn.Read(username); err != nil {
+		return fmt.Errorf("failed to read username: %w", err)
+	}
+
+	passLenBuf := make([]byte, 1)
+	if _, err := s.conn.Read(passLenBuf); err != nil {
+		return fmt.Errorf("failed to read username length: %w", err)
+	}
+
+	passLen := int(passLenBuf[0])
+	if passLen == 0 {
+		return fmt.Errorf("failed to read password length")
+	}
+
+	password := make([]byte, passLen)
+	if _, err := s.conn.Read(password); err != nil {
+		return fmt.Errorf("failed to read password: %w", err)
+	}
+
+	if s.userPassAuth(string(username), string(password)) {
+		if _, err := s.conn.Write([]byte{versionV1, resSuccess}); err != nil {
+			return fmt.Errorf("failed to write auth response: %w", err)
+		}
+	} else {
+		if _, err := s.conn.Write([]byte{versionV1, resFailure}); err != nil {
+			return fmt.Errorf("failed to write auth response: %w", err)
+		}
+
+		return fmt.Errorf("authentication failed")
+	}
+
+	return nil
 }
 
 // handleCommand handles incoming commands from the client.
