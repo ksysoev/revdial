@@ -21,19 +21,19 @@ const (
 	StateDisconnected State = 4
 )
 
-type serverOption func(*Server)
+type ServerOption func(*Server)
 
 type Server struct {
 	conn         net.Conn
+	userPassAuth func(username, password string) bool
 	state        atomic.Int32
 	id           uuid.UUID
 	noAuth       bool
-	userPassAuth func(username, password string) bool
 }
 
 // NewServer creates a new Server instance with the given net.Conn.
 // It initializes the Server's state to 0 and sets the connection to the provided conn.
-func NewServer(conn net.Conn, opts ...serverOption) *Server {
+func NewServer(conn net.Conn, opts ...ServerOption) *Server {
 	s := &Server{
 		state: atomic.Int32{},
 		conn:  conn,
@@ -71,12 +71,12 @@ func (s *Server) Process() error {
 	}
 
 	if err := s.handleInit(); err != nil {
-		s.conn.Close()
+		_ = s.conn.Close()
 		return fmt.Errorf("failed to handle init: %w", err)
 	}
 
 	if err := s.handleCommand(); err != nil {
-		s.conn.Close()
+		_ = s.conn.Close()
 		return fmt.Errorf("failed to handle command: %w", err)
 	}
 
@@ -306,14 +306,14 @@ func (s *Server) handleBind() error {
 }
 
 // WithUserPassAuth sets a custom username-password authentication function for the server.
-func WithUserPassAuth(auth func(username, password string) bool) serverOption {
+func WithUserPassAuth(auth func(username, password string) bool) ServerOption {
 	return func(s *Server) {
 		s.userPassAuth = auth
 	}
 }
 
 // WithNoAuth sets the server to operate without requiring authentication by configuring the noAuth option.
-func WithNoAuth() serverOption {
+func WithNoAuth() ServerOption {
 	return func(s *Server) {
 		s.noAuth = true
 	}
