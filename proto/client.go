@@ -68,6 +68,7 @@ func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
 	go func() {
 		defer c.wg.Done()
 		<-ctx.Done()
+
 		_ = c.conn.Close()
 	}()
 
