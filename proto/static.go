@@ -6,6 +6,7 @@ const (
 
 const (
 	noAuth                 byte = 0
+	userPassAuth           byte = 2
 	noAcceptableAuthMethod byte = 255
 )
 
