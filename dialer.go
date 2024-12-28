@@ -23,9 +23,9 @@ type Dialer struct {
 	cm         *connmng.ConnManager
 	requests   map[uuid.UUID]*connRequest
 	listen     string
+	serverOpts []proto.ServerOption
 	wg         sync.WaitGroup
 	mu         sync.RWMutex
-	serverOpts []proto.ServerOption
 }
 
 type DialerOption func(*Dialer)

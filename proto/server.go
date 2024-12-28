@@ -185,7 +185,7 @@ func (s *Server) handleAuth(method byte) error {
 // handleUserPassAuth processes user password authentication for the connection.
 // It reads and verifies the username and password, then responds with success or failure.
 func (s *Server) handleUserPassAuth() error {
-	userLen, err := sendRequest(s.conn, []byte{versionV1, userPassAuth})
+	userLen, err := sendRequest(s.conn, []byte{userPassAuth})
 	if err != nil {
 		return fmt.Errorf("failed to send user pass auth request: %w", err)
 	}
