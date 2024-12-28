@@ -96,11 +96,11 @@ func (l *Listener) Addr() net.Addr {
 	return l.addr
 }
 
-// WithUserPassAuth configures a Listener with username and password authentication.
+// WithUserPass configures a Listener with username and password authentication.
 // It takes a username and password, both of type string.
 // It returns a ListenerOption that applies the authentication to the Listener.
 // It returns an error if the username or password exceeds 255 characters or if the underlying configuration fails.
-func WithUserPassAuth(username, password string) (ListenerOption, error) {
+func WithUserPass(username, password string) (ListenerOption, error) {
 	opt, err := proto.WithUserPass(username, password)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create user pass auth option: %w", err)
