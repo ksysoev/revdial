@@ -73,7 +73,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 			return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
 		}
 
-		client := proto.NewClient(conn)
+		client := proto.NewClient(conn, l.clientOpts...)
 
 		if err := client.Bind(cmd.ID); err != nil {
 			_ = conn.Close()

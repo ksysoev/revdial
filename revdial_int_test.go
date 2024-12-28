@@ -59,22 +59,17 @@ func TestListenerDialer(t *testing.T) {
 	}
 }
 
-func TestListenerDialer_WithUserPassauth_Success(t *testing.T) {
+func TestListenerDialer_WithUserPassAuth_Success(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
 	// Create a new dialer
 	dialer := NewDialer(":0", WithUserPassAuth(func(user, pass string) bool {
 		return user == "user" && pass == "pass"
 	}))
 
-	if err := dialer.Start(context.Background()); err != nil {
+	if err := dialer.Start(ctx); err != nil {
 		t.Fatalf("failed to start dialer: %v", err)
 	}
-
-	defer func() {
-		err := dialer.Stop()
-		if err != nil {
-			t.Errorf("failed to stop dialer: %v", err)
-		}
-	}()
 
 	addr := dialer.listener.Addr().String()
 
@@ -82,7 +77,7 @@ func TestListenerDialer_WithUserPassauth_Success(t *testing.T) {
 	assert.NoError(t, err, "WithUserPass should not return an error")
 
 	// Create a new listener
-	listener, err := Listen(context.Background(), addr, lop)
+	listener, err := Listen(ctx, addr, lop)
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
@@ -96,12 +91,13 @@ func TestListenerDialer_WithUserPassauth_Success(t *testing.T) {
 		conn, err := listener.Accept()
 		if err != nil {
 			t.Errorf("failed to accept connection: %v", err)
+			cancel()
 		} else {
 			conn.Close()
 		}
 	}()
 
-	conn, err := dialer.DialContext(context.Background())
+	conn, err := dialer.DialContext(ctx)
 	if err != nil {
 		t.Fatalf("failed to dial: %v", err)
 	}
