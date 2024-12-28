@@ -15,20 +15,31 @@ type ClientConnect struct {
 }
 
 type Client struct {
-	cancel context.CancelFunc
-	conn   io.ReadWriteCloser
-	cmds   chan ClientConnect
-	wg     sync.WaitGroup
+	conn     io.ReadWriteCloser
+	cancel   context.CancelFunc
+	cmds     chan ClientConnect
+	token    []byte
+	wg       sync.WaitGroup
+	authMode byte
 }
+
+type ClientOption func(*Client)
 
 // NewClient creates a new instance of the Client struct.
 // It takes a net.Conn as a parameter and returns a pointer to the Client struct.
 // The Client struct represents a client connection and contains a connection and a channel for commands.
-func NewClient(conn io.ReadWriteCloser) *Client {
-	return &Client{
-		conn: conn,
-		cmds: make(chan ClientConnect),
+func NewClient(conn io.ReadWriteCloser, opts ...ClientOption) *Client {
+	c := &Client{
+		conn:     conn,
+		cmds:     make(chan ClientConnect),
+		authMode: noAuth,
 	}
+
+	for _, opt := range opts {
+		opt(c)
+	}
+
+	return c
 }
 
 // Commands returns a channel that can be used to receive incoming commands from the server.
@@ -42,7 +53,7 @@ func (c *Client) Commands() <-chan ClientConnect {
 func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
 	ctx, c.cancel = context.WithCancel(ctx)
 
-	if err := c.establish([]byte{noAuth}); err != nil {
+	if err := c.establish(); err != nil {
 		c.cancel()
 		return fmt.Errorf("failed to init client: %w", err)
 	}
@@ -57,7 +68,8 @@ func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
 	go func() {
 		defer c.wg.Done()
 		<-ctx.Done()
-		c.conn.Close()
+
+		_ = c.conn.Close()
 	}()
 
 	go func() {
@@ -88,7 +100,7 @@ func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
 // This function initializes the client and handles the bind operation.
 // It returns an error if the client initialization or bind operation fails.
 func (c *Client) Bind(id uuid.UUID) error {
-	if err := c.establish([]byte{noAuth}); err != nil {
+	if err := c.establish(); err != nil {
 		return fmt.Errorf("failed to init client: %w", err)
 	}
 
@@ -121,7 +133,8 @@ func (c *Client) Close() error {
 // Next, it reads a response from the connection and checks if the version is as expected.
 // Finally, it calls the handleAuth function with the response as input.
 // If any error occurs during the process, it is returned with an appropriate error message.
-func (c *Client) establish(methods []byte) error {
+func (c *Client) establish() error {
+	methods := []byte{c.authMode}
 	req := make([]byte, 0, 1+len(methods))
 	req = append(req, byte(len(methods)))
 	req = append(req, methods...)
@@ -134,15 +147,31 @@ func (c *Client) establish(methods []byte) error {
 	return c.handleAuth(resp)
 }
 
-// handleAuth handles the authentication method for the client.
-// It takes a byte parameter 'method' representing the authentication method.
-// It returns an error if the authentication method is not supported or acceptable.
-// If the authentication method is 'noAuth', it returns nil.
-// If the authentication method is 'noAcceptableAuthMethod', it returns an error with the message "no acceptable auth method".
-// If the authentication method is unsupported, it returns an error with the message "unsupported auth method: <method>".
+// handleAuth processes the authentication method specified by the server.
+// It takes a method of type byte and performs the necessary actions based on the method.
+// It returns nil on successful authentication or an error if authentication fails or the method is invalid.
 func (c *Client) handleAuth(method byte) error {
 	switch method {
 	case noAuth:
+		if c.authMode != noAuth {
+			return fmt.Errorf("server replied with different auth method")
+		}
+
+		return nil
+	case userPassAuth:
+		if c.authMode != userPassAuth {
+			return fmt.Errorf("server replied with different auth method")
+		}
+
+		resp, err := sendRequest(c.conn, c.token)
+		if err != nil {
+			return fmt.Errorf("failed to send auth token: %w", err)
+		}
+
+		if resp != resSuccess {
+			return fmt.Errorf("failed to authenticate %d", resp)
+		}
+
 		return nil
 	case noAcceptableAuthMethod:
 		return fmt.Errorf("no acceptable auth method")
@@ -251,4 +280,32 @@ func (c *Client) handleConnect(ctx context.Context) error {
 	}
 
 	return nil
+}
+
+// WithUserPass configures a client to use username and password authentication.
+// It takes a username and a password, both of type string.
+// It returns a ClientOption that sets the authentication mode and credentials for the client.
+// It returns an error if the username or password exceeds 255 characters.
+func WithUserPass(username, password string) (ClientOption, error) {
+	if len(username) > 255 || len(password) > 255 {
+		return nil, fmt.Errorf("username or password is too long")
+	}
+
+	ulen := byte(len(username))
+	plen := byte(len(password))
+
+	token := make([]byte, 0, 2+ulen+plen)
+	token = append(token, ulen)
+	token = append(token, []byte(username)...)
+	token = append(token, plen)
+	token = append(token, []byte(password)...)
+
+	return func(c *Client) {
+		if c.authMode != noAuth {
+			panic("auth mode already set")
+		}
+
+		c.authMode = userPassAuth
+		c.token = token
+	}, nil
 }

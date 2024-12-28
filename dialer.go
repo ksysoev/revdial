@@ -18,21 +18,30 @@ type connRequest struct {
 }
 
 type Dialer struct {
-	listener net.Listener
-	cancel   context.CancelFunc
-	cm       *connmng.ConnManager
-	requests map[uuid.UUID]*connRequest
-	listen   string
-	wg       sync.WaitGroup
-	mu       sync.RWMutex
+	listener   net.Listener
+	cancel     context.CancelFunc
+	cm         *connmng.ConnManager
+	requests   map[uuid.UUID]*connRequest
+	listen     string
+	serverOpts []proto.ServerOption
+	wg         sync.WaitGroup
+	mu         sync.RWMutex
 }
 
-func NewDialer(listen string) *Dialer {
-	return &Dialer{
+type DialerOption func(*Dialer)
+
+func NewDialer(listen string, opts ...DialerOption) *Dialer {
+	d := &Dialer{
 		listen:   listen,
 		cm:       connmng.New(),
 		requests: make(map[uuid.UUID]*connRequest),
 	}
+
+	for _, opt := range opts {
+		opt(d)
+	}
+
+	return d
 }
 
 func (d *Dialer) Start(ctx context.Context) error {
@@ -57,8 +66,10 @@ func (d *Dialer) Start(ctx context.Context) error {
 
 	go func() {
 		defer d.wg.Done()
+
 		<-ctx.Done()
-		d.listener.Close()
+
+		_ = d.listener.Close()
 	}()
 
 	return nil
@@ -115,7 +126,7 @@ func (d *Dialer) serve(ctx context.Context) {
 			return
 		}
 
-		s := proto.NewServer(conn)
+		s := proto.NewServer(conn, d.serverOpts...)
 
 		if err := s.Process(); err != nil {
 			continue
@@ -130,19 +141,19 @@ func (d *Dialer) serve(ctx context.Context) {
 			req := d.removeRequest(id)
 
 			if req == nil {
-				s.Close()
+				_ = s.Close()
 				continue
 			}
 
 			select {
 			case req.ch <- conn:
 			case <-req.ctx.Done():
-				s.Close()
+				_ = s.Close()
 			}
 
 		default:
 			slog.ErrorContext(ctx, "unexpected state while handling incomming connection", slog.Any("state", s.State()))
-			s.Close()
+			_ = s.Close()
 		}
 	}
 }
@@ -172,4 +183,13 @@ func (d *Dialer) removeRequest(id uuid.UUID) *connRequest {
 	delete(d.requests, id)
 
 	return ch
+}
+
+// WithUserPassAuth configures the dialer to use custom username-password authentication.
+// It takes an auth function of type func(username, password string) bool that validates credentials.
+// It returns a DialerOption which modifies the configuration of the Dialer.
+func WithUserPassAuth(auth func(username, password string) bool) DialerOption {
+	return func(d *Dialer) {
+		d.serverOpts = append(d.serverOpts, proto.WithUserPassAuth(auth))
+	}
 }

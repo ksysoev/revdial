@@ -222,3 +222,73 @@ func TestBind_Failure(t *testing.T) {
 		assert.Fail(t, "expected connection to be accepted")
 	}
 }
+
+func TestRegister_WithUserPassAuth_Success(t *testing.T) {
+	conn1, conn2 := net.Pipe()
+
+	clientOpt, err := WithUserPass("user", "pass")
+	assert.NoError(t, err)
+
+	client := NewClient(conn1, clientOpt)
+	defer client.Close()
+
+	server := NewServer(conn2, WithUserPassAuth(func(user, pass string) bool {
+		return user == "user" && pass == "pass"
+	}))
+	defer server.Close()
+
+	done := make(chan struct{})
+	go func() {
+		err := server.Process()
+		assert.NoError(t, err)
+		assert.Equal(t, server.State(), StateRegistered, "expected server to be in registered state")
+
+		close(done)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	err = client.Register(ctx, uuid.New())
+	assert.NoError(t, err)
+
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		assert.Fail(t, "expected connection to be accepted")
+	}
+}
+
+func TestRegister_WithUserPassAuth_IncorrectPass(t *testing.T) {
+	conn1, conn2 := net.Pipe()
+
+	clientOpt, err := WithUserPass("user", "incorrectPassword")
+	assert.NoError(t, err)
+
+	client := NewClient(conn1, clientOpt)
+	defer client.Close()
+
+	server := NewServer(conn2, WithUserPassAuth(func(user, pass string) bool {
+		return user == "user" && pass == "pass"
+	}))
+	defer server.Close()
+
+	done := make(chan struct{})
+	go func() {
+		err := server.Process()
+		assert.Error(t, err)
+
+		close(done)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	err = client.Register(ctx, uuid.New())
+	assert.Error(t, err)
+
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+	}
+}
