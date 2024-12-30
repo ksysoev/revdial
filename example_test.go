@@ -109,6 +109,7 @@ func ExampleDialer_withTLS() {
 		log.Printf("failed to dial: %v", err)
 		return
 	}
+
 	conn.Close()
 
 	// Output:
@@ -187,6 +188,7 @@ func ExampleDialer_withTLSAndAuth() {
 		log.Printf("failed to dial: %v", err)
 		return
 	}
+
 	conn.Close()
 
 	// Output:

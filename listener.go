@@ -14,12 +14,12 @@ var ErrListenerClosed = fmt.Errorf("listener closed")
 
 type Listener struct {
 	ctx        context.Context
+	addr       net.Addr
 	cancel     context.CancelFunc
 	client     *proto.Client
 	dialer     *net.Dialer
-	addr       net.Addr
-	clientOpts []proto.ClientOption
 	tlsConfig  *tls.Config
+	clientOpts []proto.ClientOption
 }
 
 type ListenerOption func(*Listener)
@@ -53,8 +53,10 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 		if err := tlsConn.Handshake(); err != nil {
 			conn.Close()
 			l.cancel()
+
 			return nil, fmt.Errorf("TLS handshake failed: %w", err)
 		}
+
 		conn = tlsConn
 	}
 
@@ -91,6 +93,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 				conn.Close()
 				return nil, fmt.Errorf("TLS handshake failed: %w", err)
 			}
+
 			conn = tlsConn
 		}
 

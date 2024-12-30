@@ -23,11 +23,11 @@ type Dialer struct {
 	cancel     context.CancelFunc
 	cm         *connmng.ConnManager
 	requests   map[uuid.UUID]*connRequest
+	tlsConfig  *tls.Config
 	listen     string
 	serverOpts []proto.ServerOption
 	wg         sync.WaitGroup
 	mu         sync.RWMutex
-	tlsConfig  *tls.Config
 }
 
 type DialerOption func(*Dialer)
@@ -52,8 +52,10 @@ func (d *Dialer) Start(ctx context.Context) error {
 
 	ctx, d.cancel = context.WithCancel(ctx)
 
-	var l net.Listener
-	var err error
+	var (
+		l   net.Listener
+		err error
+	)
 
 	if d.tlsConfig != nil {
 		l, err = tls.Listen("tcp", d.listen, d.tlsConfig)
