@@ -2,6 +2,7 @@ package revdial
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"log/slog"
 	"net"
@@ -22,6 +23,7 @@ type Dialer struct {
 	cancel     context.CancelFunc
 	cm         *connmng.ConnManager
 	requests   map[uuid.UUID]*connRequest
+	tlsConfig  *tls.Config
 	listen     string
 	serverOpts []proto.ServerOption
 	wg         sync.WaitGroup
@@ -50,7 +52,17 @@ func (d *Dialer) Start(ctx context.Context) error {
 
 	ctx, d.cancel = context.WithCancel(ctx)
 
-	l, err := net.Listen("tcp", d.listen)
+	var (
+		l   net.Listener
+		err error
+	)
+
+	if d.tlsConfig != nil {
+		l, err = tls.Listen("tcp", d.listen, d.tlsConfig)
+	} else {
+		l, err = net.Listen("tcp", d.listen)
+	}
+
 	if err != nil {
 		return fmt.Errorf("failed to listen: %w", err)
 	}
@@ -191,5 +203,14 @@ func (d *Dialer) removeRequest(id uuid.UUID) *connRequest {
 func WithUserPassAuth(auth func(username, password string) bool) DialerOption {
 	return func(d *Dialer) {
 		d.serverOpts = append(d.serverOpts, proto.WithUserPassAuth(auth))
+	}
+}
+
+// WithDialerTLSConfig configures the Dialer with TLS settings.
+// It takes a tls.Config pointer and returns a DialerOption that applies the TLS configuration.
+// If this option is not provided, the connection will be unencrypted.
+func WithDialerTLSConfig(config *tls.Config) DialerOption {
+	return func(d *Dialer) {
+		d.tlsConfig = config.Clone() // Clone to prevent external modifications
 	}
 }

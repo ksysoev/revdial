@@ -2,6 +2,7 @@ package revdial
 
 import (
 	"context"
+	"crypto/tls"
 	"fmt"
 	"net"
 
@@ -13,10 +14,11 @@ var ErrListenerClosed = fmt.Errorf("listener closed")
 
 type Listener struct {
 	ctx        context.Context
+	addr       net.Addr
 	cancel     context.CancelFunc
 	client     *proto.Client
 	dialer     *net.Dialer
-	addr       net.Addr
+	tlsConfig  *tls.Config
 	clientOpts []proto.ClientOption
 }
 
@@ -46,6 +48,18 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 		return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
 	}
 
+	if l.tlsConfig != nil {
+		tlsConn := tls.Client(conn, l.tlsConfig)
+		if err := tlsConn.Handshake(); err != nil {
+			conn.Close()
+			l.cancel()
+
+			return nil, fmt.Errorf("TLS handshake failed: %w", err)
+		}
+
+		conn = tlsConn
+	}
+
 	l.client = proto.NewClient(conn, l.clientOpts...)
 
 	err = l.client.Register(l.ctx, uuid.New())
@@ -71,6 +85,16 @@ func (l *Listener) Accept() (net.Conn, error) {
 		if err != nil {
 			l.cancel()
 			return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
+		}
+
+		if l.tlsConfig != nil {
+			tlsConn := tls.Client(conn, l.tlsConfig)
+			if err := tlsConn.Handshake(); err != nil {
+				conn.Close()
+				return nil, fmt.Errorf("TLS handshake failed: %w", err)
+			}
+
+			conn = tlsConn
 		}
 
 		client := proto.NewClient(conn, l.clientOpts...)
@@ -109,4 +133,13 @@ func WithUserPass(username, password string) (ListenerOption, error) {
 	return func(l *Listener) {
 		l.clientOpts = append(l.clientOpts, opt)
 	}, nil
+}
+
+// WithListenerTLSConfig configures a Listener with TLS settings.
+// It takes a tls.Config pointer and returns a ListenerOption that applies the TLS configuration.
+// If this option is not provided, the connection will be unencrypted.
+func WithListenerTLSConfig(config *tls.Config) ListenerOption {
+	return func(l *Listener) {
+		l.tlsConfig = config.Clone() // Clone to prevent external modifications
+	}
 }
