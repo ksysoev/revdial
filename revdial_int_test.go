@@ -188,7 +188,8 @@ func TestListenerDialer_WithTLS_Success(t *testing.T) {
 	dialer := NewDialer(":0", WithDialerTLSConfig(serverTLSConfig))
 
 	require.NoError(t, dialer.Start(ctx), "Failed to start dialer")
-	defer dialer.Stop()
+
+	defer func() { _ = dialer.Stop() }()
 
 	addr := dialer.listener.Addr().String()
 
@@ -249,7 +250,8 @@ func TestListenerDialer_WithTLS_InvalidCert(t *testing.T) {
 	dialer := NewDialer(":0", WithDialerTLSConfig(serverTLSConfig))
 
 	require.NoError(t, dialer.Start(ctx), "Failed to start dialer")
-	defer dialer.Stop()
+
+	defer func() { _ = dialer.Stop() }()
 
 	addr := dialer.listener.Addr().String()
 
@@ -257,6 +259,7 @@ func TestListenerDialer_WithTLS_InvalidCert(t *testing.T) {
 	listener, err := Listen(ctx, addr, WithListenerTLSConfig(clientTLSConfig))
 	// Should fail due to invalid certificate
 	require.Error(t, err, "Expected error due to invalid certificate")
+
 	if listener != nil {
 		listener.Close()
 	}
@@ -293,7 +296,8 @@ func TestListenerDialer_WithTLSAndAuth_Success(t *testing.T) {
 		}))
 
 	require.NoError(t, dialer.Start(ctx), "Failed to start dialer")
-	defer dialer.Stop()
+
+	defer func() { _ = dialer.Stop() }()
 
 	addr := dialer.listener.Addr().String()
 
