@@ -109,6 +109,9 @@ func (s *Server) SendConnectCommand(id uuid.UUID) error {
 	return nil
 }
 
+// SendPingCommand sends a ping command to the server to verify connectivity.
+// It returns nil if the server responds successfully or an error if the operation fails.
+// An error is returned if the server is not in the registered state, the request fails, or the response is unsuccessful.
 func (s *Server) SendPingCommand() error {
 	if s.state.Load() != int32(StateRegistered) {
 		return fmt.Errorf("unexpected state: %d", s.state.Load())
