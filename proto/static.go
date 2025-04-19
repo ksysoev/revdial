@@ -14,6 +14,7 @@ const (
 	cmdRegister byte = 1
 	cmdConnect  byte = 2
 	cmdBind     byte = 3
+	cmdPing     byte = 4
 )
 
 const (

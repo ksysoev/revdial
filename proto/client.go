@@ -245,6 +245,8 @@ func (c *Client) handleCommand(ctx context.Context) error {
 	switch msg {
 	case cmdConnect:
 		return c.handleConnect(ctx)
+	case cmdPing:
+		return c.handlePing()
 	default:
 		return fmt.Errorf("unsupported command: %d", msg)
 	}
@@ -277,6 +279,17 @@ func (c *Client) handleConnect(ctx context.Context) error {
 
 	if _, err := c.conn.Write([]byte{versionV1, resSuccess}); err != nil {
 		return fmt.Errorf("failed to write connect response: %w", err)
+	}
+
+	return nil
+}
+
+// handlePing sends a ping response to the connected client.
+// It writes a success response using the connection.
+// It returns an error if writing to the connection fails.
+func (c *Client) handlePing() error {
+	if _, err := c.conn.Write([]byte{versionV1, resSuccess}); err != nil {
+		return fmt.Errorf("failed to write ping response: %w", err)
 	}
 
 	return nil
