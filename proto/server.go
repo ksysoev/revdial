@@ -109,6 +109,26 @@ func (s *Server) SendConnectCommand(id uuid.UUID) error {
 	return nil
 }
 
+func (s *Server) SendPingCommand() error {
+	if s.state.Load() != int32(StateRegistered) {
+		return fmt.Errorf("unexpected state: %d", s.state.Load())
+	}
+
+	req := make([]byte, 0, 17)
+	req = append(req, cmdPing)
+
+	resp, err := sendRequest(s.conn, req)
+	if err != nil {
+		return fmt.Errorf("failed to send ping command: %w", err)
+	}
+
+	if resp != resSuccess {
+		return fmt.Errorf("failed to ping: %d", resp)
+	}
+
+	return nil
+}
+
 // Close closes the server connection and updates the server state to "Disconnected".
 // It returns an error if there was a problem closing the connection.
 func (s *Server) Close() error {
