@@ -14,6 +14,16 @@ type ClientConnect struct {
 	ID uuid.UUID
 }
 
+type clientState int8
+
+const (
+	connected clientState = iota
+	processing
+	registered
+	bound
+	disconnected
+)
+
 type Client struct {
 	conn     io.ReadWriteCloser
 	cancel   context.CancelFunc
@@ -21,6 +31,8 @@ type Client struct {
 	token    []byte
 	wg       sync.WaitGroup
 	authMode byte
+	mu       sync.Mutex
+	state    clientState
 }
 
 type ClientOption func(*Client)
@@ -51,6 +63,15 @@ func (c *Client) Commands() <-chan ClientConnect {
 // It takes a context.Context as a parameter and returns an error.
 // The Register method establishes a connection with the server and handles the registration process.
 func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.state != connected {
+		return fmt.Errorf("unexpected state: %d", c.state)
+	}
+
+	c.state = processing
+
 	ctx, c.cancel = context.WithCancel(ctx)
 
 	if err := c.establish(); err != nil {
@@ -62,6 +83,8 @@ func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
 		c.cancel()
 		return fmt.Errorf("failed to handle register: %w", err)
 	}
+
+	c.state = registered
 
 	c.wg.Add(2)
 
@@ -100,6 +123,15 @@ func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
 // This function initializes the client and handles the bind operation.
 // It returns an error if the client initialization or bind operation fails.
 func (c *Client) Bind(id uuid.UUID) error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.state != connected {
+		return fmt.Errorf("unexpected state: %d", c.state)
+	}
+
+	c.state = processing
+
 	if err := c.establish(); err != nil {
 		return fmt.Errorf("failed to init client: %w", err)
 	}
@@ -108,6 +140,8 @@ func (c *Client) Bind(id uuid.UUID) error {
 		return fmt.Errorf("failed to handle bind: %w", err)
 	}
 
+	c.state = bound
+
 	return nil
 }
 
@@ -115,6 +149,13 @@ func (c *Client) Bind(id uuid.UUID) error {
 // It cancels any pending requests and waits for all pending requests to complete before closing the connection.
 // Returns an error if there was a problem closing the connection.
 func (c *Client) Close() error {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+
+	if c.state == disconnected {
+		return nil
+	}
+
 	defer c.wg.Wait()
 
 	if c.cancel == nil {
@@ -122,6 +163,8 @@ func (c *Client) Close() error {
 	}
 
 	c.cancel()
+
+	c.state = disconnected
 
 	return c.conn.Close()
 }
