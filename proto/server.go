@@ -4,7 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
-	"sync/atomic"
+	"sync"
 
 	"github.com/google/uuid"
 )
@@ -26,17 +26,17 @@ type ServerOption func(*Server)
 type Server struct {
 	conn         net.Conn
 	userPassAuth func(username, password string) bool
-	state        atomic.Int32
+	state        State
 	id           uuid.UUID
 	noAuth       bool
+	mu           sync.RWMutex
 }
 
 // NewServer creates a new Server instance with the given net.Conn.
 // It initializes the Server's state to 0 and sets the connection to the provided conn.
 func NewServer(conn net.Conn, opts ...ServerOption) *Server {
 	s := &Server{
-		state: atomic.Int32{},
-		conn:  conn,
+		conn: conn,
 	}
 
 	for _, opt := range opts {
@@ -52,7 +52,10 @@ func NewServer(conn net.Conn, opts ...ServerOption) *Server {
 
 // State returns the current state of the server.
 func (s *Server) State() State {
-	return State(s.state.Load())
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	return s.state
 }
 
 // ID returns the ID of binded connection.
@@ -66,9 +69,14 @@ func (s *Server) ID() uuid.UUID {
 // If any error occurs during the process, it closes the connection and returns an error.
 // Returns nil if the process is successful.
 func (s *Server) Process() error {
-	if !s.state.CompareAndSwap(int32(StateConnected), int32(StateProcessing)) {
-		return fmt.Errorf("unexpected state: %d", s.state.Load())
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.state != StateConnected {
+		return fmt.Errorf("unexpected state: %d", s.state)
 	}
+
+	s.state = StateProcessing
 
 	if err := s.handleInit(); err != nil {
 		_ = s.conn.Close()
@@ -89,8 +97,11 @@ func (s *Server) Process() error {
 // It returns an error if any of the operations fail, such as writing to the connection,
 // reading the response, or encountering unexpected states or versions.
 func (s *Server) SendConnectCommand(id uuid.UUID) error {
-	if s.state.Load() != int32(StateRegistered) {
-		return fmt.Errorf("unexpected state: %d", s.state.Load())
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.state != StateRegistered {
+		return fmt.Errorf("unexpected state: %d", s.state)
 	}
 
 	req := make([]byte, 0, 17)
@@ -113,8 +124,11 @@ func (s *Server) SendConnectCommand(id uuid.UUID) error {
 // It returns nil if the server responds successfully or an error if the operation fails.
 // An error is returned if the server is not in the registered state, the request fails, or the response is unsuccessful.
 func (s *Server) SendPingCommand() error {
-	if s.state.Load() != int32(StateRegistered) {
-		return fmt.Errorf("unexpected state: %d", s.state.Load())
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.state != StateRegistered {
+		return fmt.Errorf("unexpected state: %d", s.state)
 	}
 
 	req := make([]byte, 0, 17)
@@ -135,7 +149,10 @@ func (s *Server) SendPingCommand() error {
 // Close closes the server connection and updates the server state to "Disconnected".
 // It returns an error if there was a problem closing the connection.
 func (s *Server) Close() error {
-	s.state.Store(int32(StateDisconnected))
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	s.state = StateDisconnected
 
 	return s.conn.Close()
 }
@@ -291,9 +308,11 @@ func (s *Server) handleRegister() error {
 		return fmt.Errorf("failed to write register response: %w", err)
 	}
 
-	if !s.state.CompareAndSwap(int32(StateProcessing), int32(StateRegistered)) {
-		return fmt.Errorf("unexpected state: %d", s.state.Load())
+	if s.state != StateProcessing {
+		return fmt.Errorf("unexpected state: %d", s.state)
 	}
+
+	s.state = StateRegistered
 
 	return nil
 }
@@ -321,9 +340,11 @@ func (s *Server) handleBind() error {
 		return fmt.Errorf("failed to write bind response: %w", err)
 	}
 
-	if !s.state.CompareAndSwap(int32(StateProcessing), int32(StateBound)) {
-		return fmt.Errorf("unexpected state: %d", s.state.Load())
+	if s.state != StateProcessing {
+		return fmt.Errorf("unexpected state: %d", s.state)
 	}
+
+	s.state = StateBound
 
 	return nil
 }
