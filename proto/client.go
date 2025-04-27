@@ -10,7 +10,19 @@ import (
 	"github.com/google/uuid"
 )
 
-type ClientConnect struct {
+type CommandType int
+
+type Command struct {
+	Type CommandType
+	Data any
+}
+
+const (
+	CmdUnknown CommandType = iota
+	CmdConnect
+)
+
+type ClientConnectEvent struct {
 	ID uuid.UUID
 }
 
@@ -27,7 +39,7 @@ const (
 type Client struct {
 	conn     io.ReadWriteCloser
 	cancel   context.CancelFunc
-	cmds     chan ClientConnect
+	cmds     chan Command
 	token    []byte
 	wg       sync.WaitGroup
 	authMode byte
@@ -43,7 +55,7 @@ type ClientOption func(*Client)
 func NewClient(conn io.ReadWriteCloser, opts ...ClientOption) *Client {
 	c := &Client{
 		conn:     conn,
-		cmds:     make(chan ClientConnect),
+		cmds:     make(chan Command),
 		authMode: noAuth,
 	}
 
@@ -55,7 +67,7 @@ func NewClient(conn io.ReadWriteCloser, opts ...ClientOption) *Client {
 }
 
 // Commands returns a channel that can be used to receive incoming commands from the server.
-func (c *Client) Commands() <-chan ClientConnect {
+func (c *Client) Commands() <-chan Command {
 	return c.cmds
 }
 
@@ -312,12 +324,11 @@ func (c *Client) handleConnect(ctx context.Context) error {
 		return fmt.Errorf("failed to parse UUID: %w", err)
 	}
 
+	cmd := Command{Type: CmdConnect, Data: ClientConnectEvent{ID: id}}
 	select {
 	case <-ctx.Done():
 		return nil
-	case c.cmds <- ClientConnect{
-		ID: id,
-	}:
+	case c.cmds <- cmd:
 	}
 
 	if _, err := c.conn.Write([]byte{versionV1, resSuccess}); err != nil {
