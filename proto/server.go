@@ -1,6 +1,8 @@
 package proto
 
 import (
+	"encoding/binary"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"net"
@@ -141,6 +143,51 @@ func (s *Server) SendPingCommand() error {
 
 	if resp != resSuccess {
 		return fmt.Errorf("failed to ping: %d", resp)
+	}
+
+	return nil
+}
+
+func (s *Server) EmitCustomEvent(eventName string, data any) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	if s.state != StateRegistered {
+		return fmt.Errorf("unexpected state: %d", s.state)
+	}
+	var event struct {
+		name string
+		data any
+	}
+
+	event.name = eventName
+	event.data = data
+
+	d, err := json.Marshal(event)
+	if err != nil {
+		return fmt.Errorf("failed to marshal custom event: %w", err)
+	}
+
+	maxDataLen := uint64(^uint32(0))
+	if uint64(len(d)) > maxDataLen {
+		return fmt.Errorf("custom event data exceeds maximum length of %d bytes", maxDataLen)
+	}
+
+	dataLen := make([]byte, 4)
+	binary.BigEndian.PutUint32(dataLen, uint32(len(d)))
+
+	req := make([]byte, 0, 3+len(d))
+	req = append(req, cmdCustomEvent)
+	req = append(req, dataLen...)
+	req = append(req, d...)
+
+	resp, err := sendRequest(s.conn, req)
+	if err != nil {
+		return fmt.Errorf("failed to send custom event: %w", err)
+	}
+
+	if resp != resSuccess {
+		return fmt.Errorf("failed to emit custom event: %d", resp)
 	}
 
 	return nil
