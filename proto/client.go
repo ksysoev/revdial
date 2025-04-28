@@ -2,6 +2,7 @@ package proto
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -14,15 +15,15 @@ type CommandType int
 
 type Command struct {
 	Type CommandType
-	Data any
+	data []byte
 }
 
 const (
-	CmdUnknown CommandType = iota
-	CmdConnect
+	ConnectCommandEvent CommandType = iota + 1
+	CustomEvent
 )
 
-type ClientConnectEvent struct {
+type ConnectEventData struct {
 	ID uuid.UUID
 }
 
@@ -324,7 +325,12 @@ func (c *Client) handleConnect(ctx context.Context) error {
 		return fmt.Errorf("failed to parse UUID: %w", err)
 	}
 
-	cmd := Command{Type: CmdConnect, Data: ClientConnectEvent{ID: id}}
+	data, err := json.Marshal(ConnectEventData{ID: id})
+	if err != nil {
+		return fmt.Errorf("failed to marshal connect event data: %w", err)
+	}
+
+	cmd := Command{Type: ConnectCommandEvent, data: data}
 	select {
 	case <-ctx.Done():
 		return nil
@@ -375,4 +381,8 @@ func WithUserPass(username, password string) (ClientOption, error) {
 		c.authMode = userPassAuth
 		c.token = token
 	}, nil
+}
+
+func (c *Command) Parse(d any) error {
+	return json.Unmarshal(c.data, d)
 }

@@ -107,7 +107,13 @@ func TestSendCommand(t *testing.T) {
 	select {
 	case cmd, ok := <-client.Commands():
 		assert.True(t, ok)
-		assert.Equal(t, cmd.ID, expectedID)
+		assert.Equal(t, cmd.Type, ConnectCommandEvent)
+
+		var cmdData ConnectEventData
+		err := cmd.Parse(&cmdData)
+		assert.NoError(t, err)
+
+		assert.Equal(t, cmdData.ID, expectedID)
 	case <-time.After(100 * time.Millisecond):
 		assert.Fail(t, "expected command to be received")
 	}
