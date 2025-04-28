@@ -81,30 +81,41 @@ func (l *Listener) Accept() (net.Conn, error) {
 			return nil, ErrListenerClosed
 		}
 
-		conn, err := l.dialer.DialContext(l.ctx, "tcp", l.addr.String())
-		if err != nil {
-			l.cancel()
-			return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
-		}
-
-		if l.tlsConfig != nil {
-			tlsConn := tls.Client(conn, l.tlsConfig)
-			if err := tlsConn.Handshake(); err != nil {
-				conn.Close()
-				return nil, fmt.Errorf("TLS handshake failed: %w", err)
+		switch cmd.Type {
+		case proto.ConnectCommandEvent:
+			var cmdData proto.ConnectEventData
+			if err := cmd.Parse(&cmdData); err != nil {
+				return nil, fmt.Errorf("failed to parse command data: %w", err)
 			}
 
-			conn = tlsConn
+			conn, err := l.dialer.DialContext(l.ctx, "tcp", l.addr.String())
+			if err != nil {
+				l.cancel()
+				return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
+			}
+
+			if l.tlsConfig != nil {
+				tlsConn := tls.Client(conn, l.tlsConfig)
+				if err := tlsConn.Handshake(); err != nil {
+					conn.Close()
+					return nil, fmt.Errorf("TLS handshake failed: %w", err)
+				}
+
+				conn = tlsConn
+			}
+
+			client := proto.NewClient(conn, l.clientOpts...)
+
+			if err := client.Bind(cmdData.ID); err != nil {
+				_ = conn.Close()
+				return nil, fmt.Errorf("failed to bind connection: %w", err)
+			}
+
+			return conn, nil
+		default:
+			return nil, fmt.Errorf("unexpected command type: %d", cmd.Type)
 		}
 
-		client := proto.NewClient(conn, l.clientOpts...)
-
-		if err := client.Bind(cmd.ID); err != nil {
-			_ = conn.Close()
-			return nil, fmt.Errorf("failed to bind connection: %w", err)
-		}
-
-		return conn, nil
 	}
 }
 

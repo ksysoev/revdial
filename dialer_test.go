@@ -25,7 +25,7 @@ func TestNewDialer(t *testing.T) {
 }
 
 func TestDialer_Start(t *testing.T) {
-	listenAddr := "127.0.0.1:8080"
+	listenAddr := ":0"
 	dialer := NewDialer(listenAddr)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -33,13 +33,12 @@ func TestDialer_Start(t *testing.T) {
 
 	err := dialer.Start(ctx)
 	require.NoError(t, err, "Dialer should start without error")
-
+	dialer.Addr()
 	// Ensure the listener is set
 	assert.NotNil(t, dialer.listener, "Listener should be initialized")
-	assert.Equal(t, listenAddr, dialer.listener.Addr().String(), "Listener address should match the provided address")
 
 	// Ensure the listener is accepting connections
-	conn, err := net.Dial("tcp", listenAddr)
+	conn, err := net.Dial("tcp", dialer.Addr())
 	require.NoError(t, err, "Should be able to connect to the listener")
 	conn.Close()
 
@@ -48,7 +47,7 @@ func TestDialer_Start(t *testing.T) {
 	dialer.wg.Wait()
 
 	// Ensure the listener is closed
-	_, err = net.Dial("tcp", listenAddr)
+	_, err = net.Dial("tcp", dialer.Addr())
 	assert.Error(t, err, "Listener should be closed after stopping the dialer")
 }
 
