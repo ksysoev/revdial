@@ -148,7 +148,7 @@ func (s *Server) SendPingCommand() error {
 	return nil
 }
 
-func (s *Server) EmitCustomEvent(eventName string, data any) error {
+func (s *Server) SendCustomEvent(eventName string, data any) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 

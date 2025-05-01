@@ -352,7 +352,7 @@ func TestSendCustomEvent(t *testing.T) {
 
 		close(connected)
 
-		err = server.EmitCustomEvent(expectedEventType, expectedEventData)
+		err = server.SendCustomEvent(expectedEventType, expectedEventData)
 		assert.NoError(t, err)
 		close(sent)
 	}()

@@ -69,53 +69,6 @@ func (_c *MockServerConn_Close_Call) RunAndReturn(run func() error) *MockServerC
 	return _c
 }
 
-// EmitCustomEvent provides a mock function with given fields: name, data
-func (_m *MockServerConn) EmitCustomEvent(name string, data interface{}) error {
-	ret := _m.Called(name, data)
-
-	if len(ret) == 0 {
-		panic("no return value specified for EmitCustomEvent")
-	}
-
-	var r0 error
-	if rf, ok := ret.Get(0).(func(string, interface{}) error); ok {
-		r0 = rf(name, data)
-	} else {
-		r0 = ret.Error(0)
-	}
-
-	return r0
-}
-
-// MockServerConn_EmitCustomEvent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'EmitCustomEvent'
-type MockServerConn_EmitCustomEvent_Call struct {
-	*mock.Call
-}
-
-// EmitCustomEvent is a helper method to define mock.On call
-//   - name string
-//   - data interface{}
-func (_e *MockServerConn_Expecter) EmitCustomEvent(name interface{}, data interface{}) *MockServerConn_EmitCustomEvent_Call {
-	return &MockServerConn_EmitCustomEvent_Call{Call: _e.mock.On("EmitCustomEvent", name, data)}
-}
-
-func (_c *MockServerConn_EmitCustomEvent_Call) Run(run func(name string, data interface{})) *MockServerConn_EmitCustomEvent_Call {
-	_c.Call.Run(func(args mock.Arguments) {
-		run(args[0].(string), args[1].(interface{}))
-	})
-	return _c
-}
-
-func (_c *MockServerConn_EmitCustomEvent_Call) Return(_a0 error) *MockServerConn_EmitCustomEvent_Call {
-	_c.Call.Return(_a0)
-	return _c
-}
-
-func (_c *MockServerConn_EmitCustomEvent_Call) RunAndReturn(run func(string, interface{}) error) *MockServerConn_EmitCustomEvent_Call {
-	_c.Call.Return(run)
-	return _c
-}
-
 // ID provides a mock function with no fields
 func (_m *MockServerConn) ID() uuid.UUID {
 	ret := _m.Called()
@@ -205,6 +158,53 @@ func (_c *MockServerConn_SendConnectCommand_Call) Return(_a0 error) *MockServerC
 }
 
 func (_c *MockServerConn_SendConnectCommand_Call) RunAndReturn(run func(uuid.UUID) error) *MockServerConn_SendConnectCommand_Call {
+	_c.Call.Return(run)
+	return _c
+}
+
+// SendCustomEvent provides a mock function with given fields: name, data
+func (_m *MockServerConn) SendCustomEvent(name string, data interface{}) error {
+	ret := _m.Called(name, data)
+
+	if len(ret) == 0 {
+		panic("no return value specified for SendCustomEvent")
+	}
+
+	var r0 error
+	if rf, ok := ret.Get(0).(func(string, interface{}) error); ok {
+		r0 = rf(name, data)
+	} else {
+		r0 = ret.Error(0)
+	}
+
+	return r0
+}
+
+// MockServerConn_SendCustomEvent_Call is a *mock.Call that shadows Run/Return methods with type explicit version for method 'SendCustomEvent'
+type MockServerConn_SendCustomEvent_Call struct {
+	*mock.Call
+}
+
+// SendCustomEvent is a helper method to define mock.On call
+//   - name string
+//   - data interface{}
+func (_e *MockServerConn_Expecter) SendCustomEvent(name interface{}, data interface{}) *MockServerConn_SendCustomEvent_Call {
+	return &MockServerConn_SendCustomEvent_Call{Call: _e.mock.On("SendCustomEvent", name, data)}
+}
+
+func (_c *MockServerConn_SendCustomEvent_Call) Run(run func(name string, data interface{})) *MockServerConn_SendCustomEvent_Call {
+	_c.Call.Run(func(args mock.Arguments) {
+		run(args[0].(string), args[1].(interface{}))
+	})
+	return _c
+}
+
+func (_c *MockServerConn_SendCustomEvent_Call) Return(_a0 error) *MockServerConn_SendCustomEvent_Call {
+	_c.Call.Return(_a0)
+	return _c
+}
+
+func (_c *MockServerConn_SendCustomEvent_Call) RunAndReturn(run func(string, interface{}) error) *MockServerConn_SendCustomEvent_Call {
 	_c.Call.Return(run)
 	return _c
 }

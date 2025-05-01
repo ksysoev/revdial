@@ -138,7 +138,7 @@ func (d *Dialer) SendEvent(_ context.Context, name string, payload any) error {
 		return fmt.Errorf("no connection is available")
 	}
 
-	err := s.EmitCustomEvent(name, payload)
+	err := s.SendCustomEvent(name, payload)
 	if err != nil {
 		return fmt.Errorf("failed to send event: %w", err)
 	}
