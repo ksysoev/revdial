@@ -64,22 +64,23 @@ func TestCustomEventCommand_ParsePayload(t *testing.T) {
 		data      json.RawMessage
 		shouldErr bool
 	}{
-		{name: "Valid JSON Data", data: json.RawMessage(`{"key":"value"}`), output: &map[string]string{"key": "value"}, shouldErr: false},
-		{name: "Invalid JSON Data", data: json.RawMessage(`invalid`), output: &map[string]string{}, shouldErr: true},
-		{name: "Nil Target Object", data: json.RawMessage(`{"key":"value"}`), output: nil, shouldErr: true},
+		{name: "Valid JSON Data", data: json.RawMessage(`{"key":"value"}`), output: map[string]string{"key": "value"}, shouldErr: false},
+		{name: "Invalid JSON Data", data: json.RawMessage(`invalid`), output: map[string]string{}, shouldErr: true},
+		{name: "Nil Target Object", data: json.RawMessage(`["key", "value"]`), output: nil, shouldErr: true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
 			command := CustomEventCommand{Data: tc.data}
 
-			err := command.ParsePayload(tc.output)
+			var output map[string]string
+			err := command.ParsePayload(&output)
 
 			if tc.shouldErr {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, tc.output, tc.output)
+				assert.Equal(t, output, tc.output)
 			}
 		})
 	}
