@@ -12,14 +12,20 @@ import (
 
 var ErrListenerClosed = fmt.Errorf("listener closed")
 
+type EventHandler func(event Event)
+
+type Event interface {
+	ParsePayload(v any) error
+}
 type Listener struct {
-	ctx        context.Context
-	addr       net.Addr
-	cancel     context.CancelFunc
-	client     *proto.Client
-	dialer     *net.Dialer
-	tlsConfig  *tls.Config
-	clientOpts []proto.ClientOption
+	ctx           context.Context
+	addr          net.Addr
+	cancel        context.CancelFunc
+	client        *proto.Client
+	dialer        *net.Dialer
+	tlsConfig     *tls.Config
+	clientOpts    []proto.ClientOption
+	eventHandlers map[proto.CommandType]EventHandler
 }
 
 type ListenerOption func(*Listener)
@@ -32,8 +38,9 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 	}
 
 	l := &Listener{
-		addr:   addr,
-		dialer: &net.Dialer{},
+		addr:          addr,
+		dialer:        &net.Dialer{},
+		eventHandlers: make(map[proto.CommandType]EventHandler),
 	}
 
 	for _, opt := range opts {
@@ -73,48 +80,55 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 // Accept waits for and returns the next connection to the listener.
 // It returns an error if the listener is closed.
 func (l *Listener) Accept() (net.Conn, error) {
-	select {
-	case <-l.ctx.Done():
-		return nil, ErrListenerClosed
-	case cmd, ok := <-l.client.Commands():
-		if !ok {
+	for {
+		select {
+		case <-l.ctx.Done():
 			return nil, ErrListenerClosed
-		}
-
-		switch cmd.Type() {
-		case proto.ConnectCommandType:
-			var id uuid.UUID
-			err := cmd.ParsePayload(&id)
-			if err != nil {
-				return nil, fmt.Errorf("failed to parse command payload: %w", err)
+		case cmd, ok := <-l.client.Commands():
+			if !ok {
+				return nil, ErrListenerClosed
 			}
 
-			conn, err := l.dialer.DialContext(l.ctx, "tcp", l.addr.String())
-			if err != nil {
-				l.cancel()
-				return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
-			}
-
-			if l.tlsConfig != nil {
-				tlsConn := tls.Client(conn, l.tlsConfig)
-				if err := tlsConn.Handshake(); err != nil {
-					_ = conn.Close()
-					return nil, fmt.Errorf("TLS handshake failed: %w", err)
+			switch cmd.Type() {
+			case proto.ConnectCommandType:
+				var id uuid.UUID
+				err := cmd.ParsePayload(&id)
+				if err != nil {
+					return nil, fmt.Errorf("failed to parse command payload: %w", err)
 				}
 
-				conn = tlsConn
+				conn, err := l.dialer.DialContext(l.ctx, "tcp", l.addr.String())
+				if err != nil {
+					l.cancel()
+					return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
+				}
+
+				if l.tlsConfig != nil {
+					tlsConn := tls.Client(conn, l.tlsConfig)
+					if err := tlsConn.Handshake(); err != nil {
+						_ = conn.Close()
+						return nil, fmt.Errorf("TLS handshake failed: %w", err)
+					}
+
+					conn = tlsConn
+				}
+
+				client := proto.NewClient(conn, l.clientOpts...)
+
+				if err := client.Bind(id); err != nil {
+					_ = conn.Close()
+					return nil, fmt.Errorf("failed to bind connection: %w", err)
+				}
+
+				return conn, nil
+			default:
+				if handler, ok := l.eventHandlers[cmd.Type()]; ok {
+					handler(cmd)
+					continue
+				}
+
+				return nil, fmt.Errorf("unexpected command type: %T", cmd)
 			}
-
-			client := proto.NewClient(conn, l.clientOpts...)
-
-			if err := client.Bind(id); err != nil {
-				_ = conn.Close()
-				return nil, fmt.Errorf("failed to bind connection: %w", err)
-			}
-
-			return conn, nil
-		default:
-			return nil, fmt.Errorf("unexpected command type: %T", cmd)
 		}
 	}
 }
@@ -153,4 +167,18 @@ func WithListenerTLSConfig(config *tls.Config) ListenerOption {
 	return func(l *Listener) {
 		l.tlsConfig = config.Clone() // Clone to prevent external modifications
 	}
+}
+
+// WithEventHandler registers an event handler for a specific event type.
+// It takes eventName of type string and handler of type func(event Event).
+// It returns a ListenerOption to configure the listener and an error if the event name is invalid or reserved.
+func WithEventHandler(eventName string, handler func(event Event)) (ListenerOption, error) {
+	cmdType, err := proto.NewCommandType(eventName)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create event handler: %w", err)
+	}
+
+	return func(l *Listener) {
+		l.eventHandlers[cmdType] = handler
+	}, nil
 }

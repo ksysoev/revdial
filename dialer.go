@@ -131,6 +131,21 @@ func (d *Dialer) DialContext(ctx context.Context) (net.Conn, error) {
 	}
 }
 
+func (d *Dialer) SendEvent(ctx context.Context, name string, payload any) error {
+	s := d.cm.GetConn()
+
+	if s == nil || s.State() != proto.StateRegistered {
+		return fmt.Errorf("no connection is available")
+	}
+
+	err := s.EmitCustomEvent(name, payload)
+	if err != nil {
+		return fmt.Errorf("failed to send event: %w", err)
+	}
+
+	return nil
+}
+
 func (d *Dialer) serve(ctx context.Context) {
 	for {
 		conn, err := d.listener.Accept()

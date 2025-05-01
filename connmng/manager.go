@@ -13,6 +13,7 @@ type ServerConn interface {
 	ID() uuid.UUID
 	Close() error
 	SendConnectCommand(id uuid.UUID) error
+	EmitCustomEvent(name string, data any) error
 	State() proto.State
 }
 

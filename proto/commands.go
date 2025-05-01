@@ -57,17 +57,14 @@ type CustomEventCommand struct {
 // It returns a pointer to a CustomEventCommand and an error if the name is empty, uses reserved command names,
 // or if data marshaling fails.
 func NewCustomEventCommand(name string, data any) (*CustomEventCommand, error) {
-	typeName := CommandType(name)
-	switch typeName {
-	case "":
-		return nil, fmt.Errorf("event name cannot be empty")
-	case ConnectCommandType:
-		return nil, fmt.Errorf("event name cannot contain reserved command names")
+	typeName, err := NewCommandType(name)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create custom event command: %w", err)
 	}
 
 	dataBytes, err := json.Marshal(data)
 	if err != nil {
-		return &CustomEventCommand{}, fmt.Errorf("failed to marshal custom event data: %w", err)
+		return nil, fmt.Errorf("failed to marshal custom event data: %w", err)
 	}
 	return &CustomEventCommand{
 		Name: typeName,
@@ -91,4 +88,16 @@ func (c CustomEventCommand) ParsePayload(data any) error {
 	}
 
 	return nil
+}
+
+func NewCommandType(name string) (CommandType, error) {
+	typeName := CommandType(name)
+	switch typeName {
+	case "":
+		return "", fmt.Errorf("event name cannot be empty")
+	case ConnectCommandType:
+		return "", fmt.Errorf("event name cannot contain reserved command names")
+	}
+
+	return typeName, nil
 }

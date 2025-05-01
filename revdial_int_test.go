@@ -334,3 +334,74 @@ func TestListenerDialer_WithTLSAndAuth_Success(t *testing.T) {
 		t.Error("expected connection to be accepted")
 	}
 }
+
+func TestListenerDialer_WithEventHandler(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+	// Create a new dialer
+	dialer := NewDialer(":0")
+
+	if err := dialer.Start(ctx); err != nil {
+		t.Fatalf("failed to start dialer: %v", err)
+	}
+
+	addr := dialer.listener.Addr().String()
+
+	expectedEventName := "testEvent"
+	expectedEventData := "testData"
+
+	recievedEvent := make(chan struct{})
+	lop, err := WithEventHandler(expectedEventName, func(event Event) {
+		var result string
+
+		err := event.ParsePayload(&result)
+		assert.NoError(t, err, "Failed to parse payload")
+		assert.Equal(t, expectedEventData, result, "Expected event data to match")
+
+		close(recievedEvent)
+	})
+	assert.NoError(t, err, "WithUserPass should not return an error")
+
+	// Create a new listener
+	listener, err := Listen(ctx, addr, lop)
+	if err != nil {
+		t.Fatalf("failed to create listener: %v", err)
+	}
+
+	defer listener.Close()
+
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+
+		conn, err := listener.Accept()
+		if err != nil {
+			t.Errorf("failed to accept connection: %v", err)
+			cancel()
+		} else {
+			conn.Close()
+		}
+	}()
+
+	conn, err := dialer.DialContext(ctx)
+	if err != nil {
+		t.Fatalf("failed to dial: %v", err)
+	}
+
+	defer conn.Close()
+
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Error("expected connection to be accepted")
+	}
+
+	err = dialer.SendEvent(ctx, expectedEventName, expectedEventData)
+	assert.NoError(t, err, "Failed to send event")
+
+	select {
+	case <-recievedEvent:
+	case <-time.After(100 * time.Millisecond):
+		t.Error("expected event to be received")
+	}
+}
