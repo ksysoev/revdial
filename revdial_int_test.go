@@ -196,6 +196,7 @@ func TestListenerDialer_WithTLS_Success(t *testing.T) {
 	// Create a new listener with TLS
 	listener, err := Listen(ctx, addr, WithListenerTLSConfig(clientTLSConfig))
 	require.NoError(t, err, "Failed to create listener")
+
 	defer func() { _ = listener.Close() }()
 
 	done := make(chan struct{})
@@ -213,6 +214,7 @@ func TestListenerDialer_WithTLS_Success(t *testing.T) {
 
 	conn, err := dialer.DialContext(ctx)
 	require.NoError(t, err, "Failed to dial")
+
 	defer func() { _ = conn.Close() }()
 
 	select {
@@ -309,6 +311,7 @@ func TestListenerDialer_WithTLSAndAuth_Success(t *testing.T) {
 		WithListenerTLSConfig(clientTLSConfig),
 		authOpt)
 	require.NoError(t, err, "Failed to create listener")
+
 	defer func() { _ = listener.Close() }()
 
 	done := make(chan struct{})
@@ -326,6 +329,7 @@ func TestListenerDialer_WithTLSAndAuth_Success(t *testing.T) {
 
 	conn, err := dialer.DialContext(ctx)
 	require.NoError(t, err, "Failed to dial")
+
 	defer func() { _ = conn.Close() }()
 
 	select {
