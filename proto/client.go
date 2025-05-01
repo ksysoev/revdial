@@ -354,7 +354,7 @@ func (c *Client) handleCustomEvent(ctx context.Context) error {
 	var cmd CustomEventCommand
 
 	if err := json.Unmarshal(data, &cmd); err != nil {
-		return fmt.Errorf("iled to read custom event: %w", err)
+		return fmt.Errorf("failed to read custom event: %w", err)
 	}
 
 	select {
