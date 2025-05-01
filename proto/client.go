@@ -288,6 +288,8 @@ func (c *Client) handleCommand(ctx context.Context) error {
 		return c.handleConnect(ctx)
 	case cmdPing:
 		return c.handlePing()
+	case cmdCustomEvent:
+		return c.handleCustomEvent(ctx)
 	default:
 		return fmt.Errorf("unsupported command: %d", msg)
 	}
