@@ -13,6 +13,11 @@ import (
 
 var ErrUnsupportedAuthMethod = fmt.Errorf("unsupported auth method")
 
+type CustomEvent struct {
+	Data any    `json:"d"`
+	Name string `json:"n"`
+}
+
 type State int32
 
 const (
@@ -155,26 +160,24 @@ func (s *Server) EmitCustomEvent(eventName string, data any) error {
 	if s.state != StateRegistered {
 		return fmt.Errorf("unexpected state: %d", s.state)
 	}
-	var event struct {
-		name string
-		data any
-	}
 
-	event.name = eventName
-	event.data = data
-
-	d, err := json.Marshal(event)
+	d, err := json.Marshal(CustomEvent{
+		Name: eventName,
+		Data: data,
+	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal custom event: %w", err)
 	}
 
-	maxDataLen := uint64(^uint32(0))
-	if uint64(len(d)) > maxDataLen {
+	maxDataLen := int(^uint16(0))
+	if len(d) > maxDataLen {
 		return fmt.Errorf("custom event data exceeds maximum length of %d bytes", maxDataLen)
 	}
 
-	dataLen := make([]byte, 4)
-	binary.BigEndian.PutUint32(dataLen, uint32(len(d)))
+	dataLen := make([]byte, 2)
+
+	//nolint:gosec // len is checked above
+	binary.BigEndian.PutUint16(dataLen, uint16(len(d)))
 
 	req := make([]byte, 0, 3+len(d))
 	req = append(req, cmdCustomEvent)

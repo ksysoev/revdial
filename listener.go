@@ -81,13 +81,8 @@ func (l *Listener) Accept() (net.Conn, error) {
 			return nil, ErrListenerClosed
 		}
 
-		switch cmd.Type {
-		case proto.ConnectCommandEvent:
-			var cmdData proto.ConnectEventData
-			if err := cmd.Parse(&cmdData); err != nil {
-				return nil, fmt.Errorf("failed to parse command data: %w", err)
-			}
-
+		switch c := cmd.(type) {
+		case proto.ConnectCommand:
 			conn, err := l.dialer.DialContext(l.ctx, "tcp", l.addr.String())
 			if err != nil {
 				l.cancel()
@@ -106,16 +101,15 @@ func (l *Listener) Accept() (net.Conn, error) {
 
 			client := proto.NewClient(conn, l.clientOpts...)
 
-			if err := client.Bind(cmdData.ID); err != nil {
+			if err := client.Bind(c.ID); err != nil {
 				_ = conn.Close()
 				return nil, fmt.Errorf("failed to bind connection: %w", err)
 			}
 
 			return conn, nil
 		default:
-			return nil, fmt.Errorf("unexpected command type: %d", cmd.Type)
+			return nil, fmt.Errorf("unexpected command type: %T", cmd)
 		}
-
 	}
 }
 
