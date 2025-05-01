@@ -343,14 +343,14 @@ func (c *Client) handlePing() error {
 // It returns an error for issues like reading event length, event data, unmarshaling JSON, or writing responses.
 func (c *Client) handleCustomEvent(ctx context.Context) error {
 	lenBuf := make([]byte, 2)
-	if _, err := c.conn.Read(lenBuf); err != nil {
+	if _, err := io.ReadFull(c.conn, lenBuf); err != nil {
 		return fmt.Errorf("failed to read custom event length: %w", err)
 	}
 
 	dataLen := binary.BigEndian.Uint16(lenBuf)
 
 	data := make([]byte, dataLen)
-	if _, err := c.conn.Read(data); err != nil {
+	if _, err := io.ReadFull(c.conn, data); err != nil {
 		return fmt.Errorf("failed to read custom event: %w", err)
 	}
 
