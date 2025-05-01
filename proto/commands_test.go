@@ -19,8 +19,8 @@ func TestConnectCommand_Type(t *testing.T) {
 
 func TestConnectCommand_ParsePayload(t *testing.T) {
 	tests := []struct {
-		name      string
 		input     any
+		name      string
 		shouldErr bool
 	}{
 		{name: "Valid UUID Pointer", input: &uuid.UUID{}, shouldErr: false},
@@ -39,7 +39,10 @@ func TestConnectCommand_ParsePayload(t *testing.T) {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
-				assert.Equal(t, tc.input.(*uuid.UUID), &command.ID)
+
+				input, ok := tc.input.(*uuid.UUID)
+				assert.True(t, ok, "Expected input to be of type *uuid.UUID")
+				assert.Equal(t, input, &command.ID)
 			}
 		})
 	}
@@ -56,14 +59,14 @@ func TestCustomEventCommand_Type(t *testing.T) {
 
 func TestCustomEventCommand_ParsePayload(t *testing.T) {
 	tests := []struct {
+		output    any
 		name      string
 		data      json.RawMessage
-		output    any
 		shouldErr bool
 	}{
-		{"Valid JSON Data", json.RawMessage(`{"key":"value"}`), &map[string]string{"key": "value"}, false},
-		{"Invalid JSON Data", json.RawMessage(`invalid`), &map[string]string{}, true},
-		{"Nil Target Object", json.RawMessage(`{"key":"value"}`), nil, true},
+		{name: "Valid JSON Data", data: json.RawMessage(`{"key":"value"}`), output: &map[string]string{"key": "value"}, shouldErr: false},
+		{name: "Invalid JSON Data", data: json.RawMessage(`invalid`), output: &map[string]string{}, shouldErr: true},
+		{name: "Nil Target Object", data: json.RawMessage(`{"key":"value"}`), output: nil, shouldErr: true},
 	}
 
 	for _, tc := range tests {
@@ -84,15 +87,15 @@ func TestCustomEventCommand_ParsePayload(t *testing.T) {
 
 func TestNewCustomEventCommand(t *testing.T) {
 	tests := []struct {
+		payload   any
 		name      string
 		eventName string
-		payload   any
 		shouldErr bool
 	}{
-		{"Valid Custom Event", "test-event", map[string]string{"key": "value"}, false},
-		{"Empty Event Name", "", map[string]string{"key": "value"}, true},
-		{"Reserved Event Name", string(ConnectCommandType), map[string]string{"key": "value"}, true},
-		{"Invalid Payload", "test-event", func() {}, true},
+		{name: "Valid Custom Event", eventName: "test-event", payload: map[string]string{"key": "value"}, shouldErr: false},
+		{name: "Empty Event Name", eventName: "", payload: map[string]string{"key": "value"}, shouldErr: true},
+		{name: "Reserved Event Name", eventName: string(ConnectCommandType), payload: map[string]string{"key": "value"}, shouldErr: true},
+		{name: "Invalid Payload", eventName: "test-event", payload: func() {}, shouldErr: true},
 	}
 
 	for _, tc := range tests {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/binary"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -104,7 +105,7 @@ func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
 				return
 			default:
 				err := c.handleCommand(ctx)
-				if err != nil {
+				if err != nil && !errors.Is(err, io.EOF) {
 					slog.Error("failed to handle command", slog.Any("error", err))
 					return
 				}
@@ -344,6 +345,7 @@ func (c *Client) handleCustomEvent(ctx context.Context) error {
 	}
 
 	dataLen := binary.BigEndian.Uint16(lenBuf)
+
 	data := make([]byte, dataLen)
 	if _, err := c.conn.Read(data); err != nil {
 		return fmt.Errorf("failed to read custom event: %w", err)

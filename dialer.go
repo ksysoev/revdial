@@ -131,7 +131,7 @@ func (d *Dialer) DialContext(ctx context.Context) (net.Conn, error) {
 	}
 }
 
-func (d *Dialer) SendEvent(ctx context.Context, name string, payload any) error {
+func (d *Dialer) SendEvent(_ context.Context, name string, payload any) error {
 	s := d.cm.GetConn()
 
 	if s == nil || s.State() != proto.StateRegistered {

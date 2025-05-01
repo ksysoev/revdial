@@ -66,6 +66,7 @@ func NewCustomEventCommand(name string, data any) (*CustomEventCommand, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to marshal custom event data: %w", err)
 	}
+
 	return &CustomEventCommand{
 		Name: typeName,
 		Data: dataBytes,

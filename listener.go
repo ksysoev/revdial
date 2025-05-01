@@ -24,8 +24,8 @@ type Listener struct {
 	client        *proto.Client
 	dialer        *net.Dialer
 	tlsConfig     *tls.Config
-	clientOpts    []proto.ClientOption
 	eventHandlers map[proto.CommandType]EventHandler
+	clientOpts    []proto.ClientOption
 }
 
 type ListenerOption func(*Listener)
@@ -59,6 +59,7 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 		tlsConn := tls.Client(conn, l.tlsConfig)
 		if err := tlsConn.Handshake(); err != nil {
 			_ = conn.Close()
+
 			l.cancel()
 
 			return nil, fmt.Errorf("TLS handshake failed: %w", err)
@@ -92,6 +93,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 			switch cmd.Type() {
 			case proto.ConnectCommandType:
 				var id uuid.UUID
+
 				err := cmd.ParsePayload(&id)
 				if err != nil {
 					return nil, fmt.Errorf("failed to parse command payload: %w", err)
@@ -124,7 +126,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 			default:
 				if handler, ok := l.eventHandlers[cmd.Type()]; ok {
 					handler(cmd)
-					// continue
+					continue
 				}
 
 				return nil, fmt.Errorf("unexpected command type: %T", cmd)

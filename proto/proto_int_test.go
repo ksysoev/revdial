@@ -333,6 +333,7 @@ func TestPing_Success(t *testing.T) {
 func TestSendCustomEvent(t *testing.T) {
 	conn1, conn2 := net.Pipe()
 	client := NewClient(conn1)
+
 	defer func() { _ = client.Close() }()
 
 	server := NewServer(conn2)
@@ -358,6 +359,7 @@ func TestSendCustomEvent(t *testing.T) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
 	defer cancel()
+
 	err := client.Register(ctx, uuid.New())
 	assert.NoError(t, err)
 	select {
