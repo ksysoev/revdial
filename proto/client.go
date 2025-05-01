@@ -2,6 +2,8 @@ package proto
 
 import (
 	"context"
+	"encoding/binary"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log/slog"
@@ -328,6 +330,37 @@ func (c *Client) handleConnect(ctx context.Context) error {
 func (c *Client) handlePing() error {
 	if _, err := c.conn.Write([]byte{versionV1, resSuccess}); err != nil {
 		return fmt.Errorf("failed to write ping response: %w", err)
+	}
+
+	return nil
+}
+
+func (c *Client) handleCustomEvent(ctx context.Context) error {
+	lenBuf := make([]byte, 2)
+	if _, err := c.conn.Read(lenBuf); err != nil {
+		return fmt.Errorf("failed to read connect request: %w", err)
+	}
+
+	dataLen := binary.BigEndian.Uint16(lenBuf)
+	data := make([]byte, dataLen)
+	if _, err := c.conn.Read(data); err != nil {
+		return fmt.Errorf("failed to read connect request: %w", err)
+	}
+
+	var cmd CustomEventCommand
+
+	if err := json.Unmarshal(data, &cmd); err != nil {
+		return fmt.Errorf("failed to unmarshal custom event: %w", err)
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil
+	case c.cmds <- cmd:
+	}
+
+	if _, err := c.conn.Write([]byte{versionV1, resSuccess}); err != nil {
+		return fmt.Errorf("failed to write connect response: %w", err)
 	}
 
 	return nil

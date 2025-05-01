@@ -51,7 +51,7 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 	if l.tlsConfig != nil {
 		tlsConn := tls.Client(conn, l.tlsConfig)
 		if err := tlsConn.Handshake(); err != nil {
-			conn.Close()
+			_ = conn.Close()
 			l.cancel()
 
 			return nil, fmt.Errorf("TLS handshake failed: %w", err)
@@ -92,7 +92,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 			if l.tlsConfig != nil {
 				tlsConn := tls.Client(conn, l.tlsConfig)
 				if err := tlsConn.Handshake(); err != nil {
-					conn.Close()
+					_ = conn.Close()
 					return nil, fmt.Errorf("TLS handshake failed: %w", err)
 				}
 

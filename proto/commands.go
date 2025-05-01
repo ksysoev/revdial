@@ -26,8 +26,8 @@ func (c ConnectCommand) Type() CommandType {
 }
 
 type CustomEventCommand struct {
-	Name string
-	Data json.RawMessage
+	Name string          `json:"n"`
+	Data json.RawMessage `json:"d"`
 }
 
 func (c CustomEventCommand) Type() CommandType {
