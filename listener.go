@@ -124,7 +124,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 			default:
 				if handler, ok := l.eventHandlers[cmd.Type()]; ok {
 					handler(cmd)
-					continue
+					// continue
 				}
 
 				return nil, fmt.Errorf("unexpected command type: %T", cmd)

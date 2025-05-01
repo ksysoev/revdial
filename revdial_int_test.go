@@ -62,7 +62,7 @@ func TestListenerDialer(t *testing.T) {
 	// Create a new dialer
 	dialer := NewDialer(":0")
 
-	if err := dialer.Start(context.Background()); err != nil {
+	if err := dialer.Start(t.Context()); err != nil {
 		t.Fatalf("failed to start dialer: %v", err)
 	}
 
@@ -76,7 +76,7 @@ func TestListenerDialer(t *testing.T) {
 	addr := dialer.listener.Addr().String()
 
 	// Create a new listener
-	listener, err := Listen(context.Background(), addr)
+	listener, err := Listen(t.Context(), addr)
 	if err != nil {
 		t.Fatalf("failed to create listener: %v", err)
 	}
@@ -95,7 +95,7 @@ func TestListenerDialer(t *testing.T) {
 		}
 	}()
 
-	conn, err := dialer.DialContext(context.Background())
+	conn, err := dialer.DialContext(t.Context())
 	if err != nil {
 		t.Fatalf("failed to dial: %v", err)
 	}

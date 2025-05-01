@@ -36,8 +36,8 @@ func (c ConnectCommand) Type() CommandType {
 // It takes a single parameter data of type any, expected to be a pointer to uuid.UUID.
 // It returns an error if the data is not of type *uuid.UUID or cannot be parsed.
 func (c ConnectCommand) ParsePayload(data any) error {
-	if _, ok := data.(*uuid.UUID); ok {
-		data = &c.ID
+	if d, ok := data.(*uuid.UUID); ok {
+		*d = c.ID
 		return nil
 	}
 

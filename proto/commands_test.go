@@ -23,14 +23,16 @@ func TestConnectCommand_ParsePayload(t *testing.T) {
 		input     any
 		shouldErr bool
 	}{
-		{"Valid UUID Pointer", &uuid.UUID{}, false},
-		{"Invalid Data Type", "invalid", true},
-		{"Nil Input", nil, true},
+		{name: "Valid UUID Pointer", input: &uuid.UUID{}, shouldErr: false},
+		{name: "Invalid Data Type", input: "invalid", shouldErr: true},
+		{name: "Nil Input", input: nil, shouldErr: true},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			command := ConnectCommand{}
+			command := ConnectCommand{
+				ID: uuid.New(),
+			}
 			err := command.ParsePayload(tc.input)
 
 			if tc.shouldErr {
