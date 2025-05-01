@@ -32,6 +32,9 @@ type Dialer struct {
 
 type DialerOption func(*Dialer)
 
+// NewDialer creates and returns a new instance of Dialer configured with the specified listen address.
+// It takes listen of type string, specifying the address to bind to, and optional DialerOption arguments to customize the Dialer.
+// It returns a pointer to the newly created Dialer instance.
 func NewDialer(listen string, opts ...DialerOption) *Dialer {
 	d := &Dialer{
 		listen:   listen,
@@ -46,6 +49,9 @@ func NewDialer(listen string, opts ...DialerOption) *Dialer {
 	return d
 }
 
+// Start initializes and starts the Dialer, beginning to listen for incoming connections.
+// It takes a Context (ctx) to manage the lifetime of the listener and associated goroutines.
+// It returns an error if the listener fails to start or an issue occurs during initialization.
 func (d *Dialer) Start(ctx context.Context) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -87,10 +93,16 @@ func (d *Dialer) Start(ctx context.Context) error {
 	return nil
 }
 
+// Addr returns the address that the Dialer is currently listening on as a string.
+// It does not take any parameters and returns the network address of the listener.
+// If the listener is not initialized, it may return an empty string.
 func (d *Dialer) Addr() string {
 	return d.listener.Addr().String()
 }
 
+// Stop gracefully shuts down the Dialer, stopping the listener and associated goroutines.
+// It does not take any parameters and returns an error if the listener fails to close.
+// It safely handles cases where Stop is called without prior initialization or a running listener.
 func (d *Dialer) Stop() error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -106,6 +118,9 @@ func (d *Dialer) Stop() error {
 	return d.listener.Close()
 }
 
+// DialContext establishes a new connection using the context for control and cancellation.
+// It takes a ctx of type context.Context to manage connection lifecycle.
+// It returns a net.Conn representing the connection and an error if no connection is available or other issues occur.
 func (d *Dialer) DialContext(ctx context.Context) (net.Conn, error) {
 	s := d.cm.GetConn()
 
@@ -131,6 +146,28 @@ func (d *Dialer) DialContext(ctx context.Context) (net.Conn, error) {
 	}
 }
 
+// SendEvent sends a custom event with the given name and payload through an active connection.
+// It takes a context.Context (unused), a name of type string, and a payload of type any.
+// It returns an error if no active connection is available or if sending the event fails.
+func (d *Dialer) SendEvent(_ context.Context, name string, payload any) error {
+	s := d.cm.GetConn()
+
+	if s == nil || s.State() != proto.StateRegistered {
+		return fmt.Errorf("no connection is available")
+	}
+
+	err := s.SendCustomEvent(name, payload)
+	if err != nil {
+		return fmt.Errorf("failed to send event: %w", err)
+	}
+
+	return nil
+}
+
+// serve handles incoming connections on the Dialer's listener and processes them based on their state.
+// It takes a Context (ctx) to manage the lifetime of the serve routine.
+// It does not return any values directly but terminates if the listener is closed or ctx is canceled.
+// It stops processing a connection in case of errors during its handling.
 func (d *Dialer) serve(ctx context.Context) {
 	for {
 		conn, err := d.listener.Accept()
@@ -170,6 +207,9 @@ func (d *Dialer) serve(ctx context.Context) {
 	}
 }
 
+// addRequest creates a new connection request channel and associates it with a unique identifier.
+// It takes a ctx of type context.Context to manage the lifecycle of the request and an id of type uuid.UUID as the identifier.
+// It returns a receive-only channel of type net.Conn to deliver the connection result.
 func (d *Dialer) addRequest(ctx context.Context, id uuid.UUID) <-chan net.Conn {
 	d.mu.Lock()
 	defer d.mu.Unlock()
@@ -183,6 +223,9 @@ func (d *Dialer) addRequest(ctx context.Context, id uuid.UUID) <-chan net.Conn {
 	return ch
 }
 
+// removeRequest removes a connection request associated with the given ID from the Dialer's request map.
+// It takes an id of type uuid.UUID which identifies the connection request.
+// It returns a pointer to the connRequest if found and removes it from the map, or nil if no request exists with the given ID.
 func (d *Dialer) removeRequest(id uuid.UUID) *connRequest {
 	d.mu.Lock()
 	defer d.mu.Unlock()

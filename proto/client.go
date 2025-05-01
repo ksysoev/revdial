@@ -2,6 +2,9 @@ package proto
 
 import (
 	"context"
+	"encoding/binary"
+	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -9,10 +12,6 @@ import (
 
 	"github.com/google/uuid"
 )
-
-type ClientConnect struct {
-	ID uuid.UUID
-}
 
 type clientState int8
 
@@ -27,7 +26,7 @@ const (
 type Client struct {
 	conn     io.ReadWriteCloser
 	cancel   context.CancelFunc
-	cmds     chan ClientConnect
+	cmds     chan Command
 	token    []byte
 	wg       sync.WaitGroup
 	authMode byte
@@ -43,7 +42,7 @@ type ClientOption func(*Client)
 func NewClient(conn io.ReadWriteCloser, opts ...ClientOption) *Client {
 	c := &Client{
 		conn:     conn,
-		cmds:     make(chan ClientConnect),
+		cmds:     make(chan Command),
 		authMode: noAuth,
 	}
 
@@ -55,7 +54,7 @@ func NewClient(conn io.ReadWriteCloser, opts ...ClientOption) *Client {
 }
 
 // Commands returns a channel that can be used to receive incoming commands from the server.
-func (c *Client) Commands() <-chan ClientConnect {
+func (c *Client) Commands() <-chan Command {
 	return c.cmds
 }
 
@@ -106,7 +105,7 @@ func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
 				return
 			default:
 				err := c.handleCommand(ctx)
-				if err != nil {
+				if err != nil && !errors.Is(err, io.EOF) {
 					slog.Error("failed to handle command", slog.Any("error", err))
 					return
 				}
@@ -290,6 +289,8 @@ func (c *Client) handleCommand(ctx context.Context) error {
 		return c.handleConnect(ctx)
 	case cmdPing:
 		return c.handlePing()
+	case cmdCustomEvent:
+		return c.handleCustomEvent(ctx)
 	default:
 		return fmt.Errorf("unsupported command: %d", msg)
 	}
@@ -312,12 +313,11 @@ func (c *Client) handleConnect(ctx context.Context) error {
 		return fmt.Errorf("failed to parse UUID: %w", err)
 	}
 
+	cmd := ConnectCommand{ID: id}
 	select {
 	case <-ctx.Done():
 		return nil
-	case c.cmds <- ClientConnect{
-		ID: id,
-	}:
+	case c.cmds <- cmd:
 	}
 
 	if _, err := c.conn.Write([]byte{versionV1, resSuccess}); err != nil {
@@ -333,6 +333,41 @@ func (c *Client) handleConnect(ctx context.Context) error {
 func (c *Client) handlePing() error {
 	if _, err := c.conn.Write([]byte{versionV1, resSuccess}); err != nil {
 		return fmt.Errorf("failed to write ping response: %w", err)
+	}
+
+	return nil
+}
+
+// handleCustomEvent processes a custom event received over a connection and forwards it to a command channel.
+// It takes a context ctx of type context.Context and returns an error if processing or communication fails.
+// It returns an error for issues like reading event length, event data, unmarshaling JSON, or writing responses.
+func (c *Client) handleCustomEvent(ctx context.Context) error {
+	lenBuf := make([]byte, 2)
+	if _, err := io.ReadFull(c.conn, lenBuf); err != nil {
+		return fmt.Errorf("failed to read custom event length: %w", err)
+	}
+
+	dataLen := binary.BigEndian.Uint16(lenBuf)
+
+	data := make([]byte, dataLen)
+	if _, err := io.ReadFull(c.conn, data); err != nil {
+		return fmt.Errorf("failed to read custom event: %w", err)
+	}
+
+	var cmd CustomEventCommand
+
+	if err := json.Unmarshal(data, &cmd); err != nil {
+		return fmt.Errorf("failed to read custom event: %w", err)
+	}
+
+	select {
+	case <-ctx.Done():
+		return nil
+	case c.cmds <- cmd:
+	}
+
+	if _, err := c.conn.Write([]byte{versionV1, resSuccess}); err != nil {
+		return fmt.Errorf("failed to write custom event response: %w", err)
 	}
 
 	return nil

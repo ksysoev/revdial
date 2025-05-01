@@ -107,7 +107,11 @@ func TestSendCommand(t *testing.T) {
 	select {
 	case cmd, ok := <-client.Commands():
 		assert.True(t, ok)
-		assert.Equal(t, cmd.ID, expectedID)
+
+		c, ok := cmd.(ConnectCommand)
+		assert.True(t, ok)
+
+		assert.Equal(t, c.ID, expectedID)
 	case <-time.After(100 * time.Millisecond):
 		assert.Fail(t, "expected command to be received")
 	}
@@ -324,4 +328,63 @@ func TestPing_Success(t *testing.T) {
 
 	err = server.SendPingCommand()
 	assert.NoError(t, err)
+}
+
+func TestSendCustomEvent(t *testing.T) {
+	conn1, conn2 := net.Pipe()
+	client := NewClient(conn1)
+
+	defer func() { _ = client.Close() }()
+
+	server := NewServer(conn2)
+	defer func() { _ = server.Close() }()
+
+	expectedEventType := "test_event_type"
+	expectedEventData := "test_event"
+
+	connected := make(chan struct{})
+	sent := make(chan struct{})
+
+	go func() {
+		err := server.Process()
+		assert.NoError(t, err)
+		assert.Equal(t, server.State(), StateRegistered, "expected server to be in registered state")
+
+		close(connected)
+
+		err = server.SendCustomEvent(expectedEventType, expectedEventData)
+		assert.NoError(t, err)
+		close(sent)
+	}()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	defer cancel()
+
+	err := client.Register(ctx, uuid.New())
+	assert.NoError(t, err)
+	select {
+	case <-connected:
+	case <-time.After(100 * time.Millisecond):
+		assert.Fail(t, "expected connection to be accepted")
+	}
+
+	select {
+	case cmd, ok := <-client.Commands():
+		assert.True(t, ok)
+		assert.Equal(t, cmd.Type(), CommandType(expectedEventType))
+
+		var result string
+
+		err := cmd.ParsePayload(&result)
+		assert.NoError(t, err)
+		assert.Equal(t, result, expectedEventData)
+	case <-time.After(100 * time.Millisecond):
+		assert.Fail(t, "expected command to be received")
+	}
+
+	select {
+	case <-sent:
+	case <-time.After(100 * time.Millisecond):
+		assert.Fail(t, "expected event to be sent")
+	}
 }
