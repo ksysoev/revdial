@@ -148,6 +148,9 @@ func (s *Server) SendPingCommand() error {
 	return nil
 }
 
+// SendCustomEvent sends a custom event with the specified name and data to the server.
+// It takes eventName of type string and data of type any.
+// It returns an error if the server state is invalid, event creation or marshalling fails, or data exceeds the maximum length.
 func (s *Server) SendCustomEvent(eventName string, data any) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()

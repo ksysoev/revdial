@@ -91,6 +91,9 @@ func (c CustomEventCommand) ParsePayload(data any) error {
 	return nil
 }
 
+// NewCommandType creates a new CommandType from the given name.
+// It takes name of type string, which specifies the command name.
+// It returns the created CommandType and an error if the name is empty or matches reserved command names.
 func NewCommandType(name string) (CommandType, error) {
 	typeName := CommandType(name)
 	switch typeName {

@@ -30,7 +30,10 @@ type Listener struct {
 
 type ListenerOption func(*Listener)
 
-// Listen creates a new listener that listens for incoming connections.
+// Listen establishes a listener connection to a remote dialer server.
+// It takes a context (ctx), a dialer server address (dialerSrv), and optional configuration (opts).
+// It returns a pointer to a Listener instance or an error.
+// It returns an error if the address resolution, connection, TLS handshake, or client registration fails.
 func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Listener, error) {
 	addr, err := net.ResolveTCPAddr("tcp", dialerSrv)
 	if err != nil {
@@ -78,8 +81,9 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 	return l, nil
 }
 
-// Accept waits for and returns the next connection to the listener.
-// It returns an error if the listener is closed.
+// Accept waits for and accepts a connection request from the client.
+// It returns a net.Conn representing the established connection or an error.
+// It returns an error if the listener is closed, fails to parse a command, fails to connect, or encounters a binding error.
 func (l *Listener) Accept() (net.Conn, error) {
 	for {
 		select {
@@ -135,14 +139,17 @@ func (l *Listener) Accept() (net.Conn, error) {
 	}
 }
 
-// Close closes the listener and the underlying connection.
+// Close terminates the Listener and releases associated resources.
+// It returns an error if the underlying client fails to close properly.
 func (l *Listener) Close() error {
 	l.cancel()
 
 	return l.client.Close()
 }
 
-// Addr returns the address of remote dialer server.
+// Addr returns the network address the Listener is bound to.
+// It takes no parameters.
+// It returns a net.Addr representing the address of the Listener.
 func (l *Listener) Addr() net.Addr {
 	return l.addr
 }

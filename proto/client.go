@@ -338,6 +338,9 @@ func (c *Client) handlePing() error {
 	return nil
 }
 
+// handleCustomEvent processes a custom event received over a connection and forwards it to a command channel.
+// It takes a context ctx of type context.Context and returns an error if processing or communication fails.
+// It returns an error for issues like reading event length, event data, unmarshaling JSON, or writing responses.
 func (c *Client) handleCustomEvent(ctx context.Context) error {
 	lenBuf := make([]byte, 2)
 	if _, err := c.conn.Read(lenBuf); err != nil {
