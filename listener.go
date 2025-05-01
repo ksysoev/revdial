@@ -81,8 +81,14 @@ func (l *Listener) Accept() (net.Conn, error) {
 			return nil, ErrListenerClosed
 		}
 
-		switch c := cmd.(type) {
-		case proto.ConnectCommand:
+		switch cmd.Type() {
+		case proto.ConnectCommandType:
+			var id uuid.UUID
+			err := cmd.ParsePayload(&id)
+			if err != nil {
+				return nil, fmt.Errorf("failed to parse command payload: %w", err)
+			}
+
 			conn, err := l.dialer.DialContext(l.ctx, "tcp", l.addr.String())
 			if err != nil {
 				l.cancel()
@@ -101,7 +107,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 
 			client := proto.NewClient(conn, l.clientOpts...)
 
-			if err := client.Bind(c.ID); err != nil {
+			if err := client.Bind(id); err != nil {
 				_ = conn.Close()
 				return nil, fmt.Errorf("failed to bind connection: %w", err)
 			}

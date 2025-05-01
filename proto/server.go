@@ -13,11 +13,6 @@ import (
 
 var ErrUnsupportedAuthMethod = fmt.Errorf("unsupported auth method")
 
-type CustomEvent struct {
-	Data any    `json:"d"`
-	Name string `json:"n"`
-}
-
 type State int32
 
 const (
@@ -161,10 +156,12 @@ func (s *Server) EmitCustomEvent(eventName string, data any) error {
 		return fmt.Errorf("unexpected state: %d", s.state)
 	}
 
-	d, err := json.Marshal(CustomEvent{
-		Name: eventName,
-		Data: data,
-	})
+	event, err := NewCustomEventCommand(eventName, data)
+	if err != nil {
+		return fmt.Errorf("failed to create custom event command: %w", err)
+	}
+
+	d, err := json.Marshal(event)
 	if err != nil {
 		return fmt.Errorf("failed to marshal custom event: %w", err)
 	}
