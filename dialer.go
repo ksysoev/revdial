@@ -235,7 +235,7 @@ func (d *Dialer) handleConnection(ctx context.Context, conn net.Conn) {
 		}
 
 	default:
-		slog.Error("unexpected state while handling incomming connection", slog.Any("state", s.State()))
+		slog.Error("unexpected state while handling incoming connection", slog.Any("state", s.State()))
 		return
 	}
 }
