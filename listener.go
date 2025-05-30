@@ -17,13 +17,17 @@ type EventHandler func(event Event)
 type Event interface {
 	ParsePayload(v any) error
 }
+
+type dialer interface {
+	DialContext(ctx context.Context, network, address string) (net.Conn, error)
+}
+
 type Listener struct {
 	ctx           context.Context
 	addr          net.Addr
 	cancel        context.CancelFunc
 	client        *proto.Client
-	dialer        *net.Dialer
-	tlsConfig     *tls.Config
+	dialer        dialer
 	eventHandlers map[proto.CommandType]EventHandler
 	clientOpts    []proto.ClientOption
 }
@@ -56,19 +60,6 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 	if err != nil {
 		l.cancel()
 		return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
-	}
-
-	if l.tlsConfig != nil {
-		tlsConn := tls.Client(conn, l.tlsConfig)
-		if err := tlsConn.Handshake(); err != nil {
-			_ = conn.Close()
-
-			l.cancel()
-
-			return nil, fmt.Errorf("TLS handshake failed: %w", err)
-		}
-
-		conn = tlsConn
 	}
 
 	l.client = proto.NewClient(conn, l.clientOpts...)
@@ -107,16 +98,6 @@ func (l *Listener) Accept() (net.Conn, error) {
 				if err != nil {
 					l.cancel()
 					return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
-				}
-
-				if l.tlsConfig != nil {
-					tlsConn := tls.Client(conn, l.tlsConfig)
-					if err := tlsConn.Handshake(); err != nil {
-						_ = conn.Close()
-						return nil, fmt.Errorf("TLS handshake failed: %w", err)
-					}
-
-					conn = tlsConn
 				}
 
 				client := proto.NewClient(conn, l.clientOpts...)
@@ -174,7 +155,11 @@ func WithUserPass(username, password string) (ListenerOption, error) {
 // If this option is not provided, the connection will be unencrypted.
 func WithListenerTLSConfig(config *tls.Config) ListenerOption {
 	return func(l *Listener) {
-		l.tlsConfig = config.Clone() // Clone to prevent external modifications
+		d := l.dialer.(*net.Dialer)
+		l.dialer = &tls.Dialer{
+			NetDialer: d,
+			Config:    config.Clone(),
+		}
 	}
 }
 
