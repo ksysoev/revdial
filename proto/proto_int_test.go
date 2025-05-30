@@ -146,7 +146,7 @@ func TestSendCommand_Failure(t *testing.T) {
 		close(done)
 	}()
 
-	ctx, cancel := context.WithTimeout(context.Background(), 1*time.Second)
+	ctx, cancel := context.WithTimeout(t.Context(), 1*time.Second)
 	defer cancel()
 
 	err := client.Register(ctx, uuid.New())
@@ -186,7 +186,7 @@ func TestBind_Success(t *testing.T) {
 		close(done)
 	}()
 
-	err := client.Bind(expectedID)
+	err := client.Bind(t.Context(), expectedID)
 	assert.NoError(t, err)
 
 	select {
@@ -217,7 +217,7 @@ func TestBind_Failure(t *testing.T) {
 		close(done)
 	}()
 
-	err := client.Bind(uuid.New())
+	err := client.Bind(t.Context(), uuid.New())
 	assert.Error(t, err)
 
 	select {

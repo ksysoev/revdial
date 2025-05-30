@@ -132,10 +132,10 @@ func (c *Client) Bind(ctx context.Context, id uuid.UUID) error {
 	}
 
 	c.state = processing
-
 	ctx, c.cancel = context.WithCancel(ctx)
 
 	c.wg.Add(1)
+
 	go func() {
 		defer c.wg.Done()
 		<-ctx.Done()

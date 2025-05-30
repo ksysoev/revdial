@@ -172,6 +172,7 @@ func (d *Dialer) serve(ctx context.Context) {
 	ctx, cancel := context.WithCancel(ctx)
 
 	var wg sync.WaitGroup
+
 	for {
 		conn, err := d.listener.Accept()
 		if err != nil {
@@ -180,6 +181,7 @@ func (d *Dialer) serve(ctx context.Context) {
 		}
 
 		wg.Add(1)
+
 		go func() {
 			defer wg.Done()
 			d.handleConnection(ctx, conn)
@@ -194,6 +196,7 @@ func (d *Dialer) serve(ctx context.Context) {
 func (d *Dialer) handleConnection(ctx context.Context, conn net.Conn) {
 	done := make(chan struct{})
 	ctx, cancel := context.WithCancel(ctx)
+
 	defer cancel()
 
 	go func() {
@@ -213,8 +216,8 @@ func (d *Dialer) handleConnection(ctx context.Context, conn net.Conn) {
 	case proto.StateRegistered:
 		d.cm.AddConnection(s)
 		close(done)
-		return
 
+		return
 	case proto.StateBound:
 		id := s.ID()
 		req := d.removeRequest(id)

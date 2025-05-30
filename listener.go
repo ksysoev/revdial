@@ -102,7 +102,7 @@ func (l *Listener) Accept() (net.Conn, error) {
 
 				client := proto.NewClient(conn, l.clientOpts...)
 
-				if err := client.Bind(id); err != nil {
+				if err := client.Bind(l.ctx, id); err != nil {
 					_ = conn.Close()
 					return nil, fmt.Errorf("failed to bind connection: %w", err)
 				}
@@ -155,7 +155,7 @@ func WithUserPass(username, password string) (ListenerOption, error) {
 // If this option is not provided, the connection will be unencrypted.
 func WithListenerTLSConfig(config *tls.Config) ListenerOption {
 	return func(l *Listener) {
-		d := l.dialer.(*net.Dialer)
+		d, _ := l.dialer.(*net.Dialer)
 		l.dialer = &tls.Dialer{
 			NetDialer: d,
 			Config:    config.Clone(),
