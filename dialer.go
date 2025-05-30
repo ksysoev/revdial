@@ -169,41 +169,52 @@ func (d *Dialer) SendEvent(_ context.Context, name string, payload any) error {
 // It does not return any values directly but terminates if the listener is closed or ctx is canceled.
 // It stops processing a connection in case of errors during its handling.
 func (d *Dialer) serve(ctx context.Context) {
+	ctx, cancel := context.WithCancel(ctx)
+
+	var wg sync.WaitGroup
 	for {
 		conn, err := d.listener.Accept()
 		if err != nil {
+			cancel()
 			return
 		}
 
-		s := proto.NewServer(conn, d.serverOpts...)
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			d.handleConnection(ctx, conn)
+		}()
+	}
+}
 
-		if err := s.Process(); err != nil {
-			continue
+func (d *Dialer) handleConnection(_ context.Context, conn net.Conn) {
+	s := proto.NewServer(conn, d.serverOpts...)
+	if err := s.Process(); err != nil {
+		return
+	}
+
+	switch s.State() {
+	case proto.StateRegistered:
+		d.cm.AddConnection(s)
+
+	case proto.StateBound:
+		id := s.ID()
+		req := d.removeRequest(id)
+
+		if req == nil {
+			_ = s.Close()
+			return
 		}
 
-		switch s.State() {
-		case proto.StateRegistered:
-			d.cm.AddConnection(s)
-
-		case proto.StateBound:
-			id := s.ID()
-			req := d.removeRequest(id)
-
-			if req == nil {
-				_ = s.Close()
-				continue
-			}
-
-			select {
-			case req.ch <- conn:
-			case <-req.ctx.Done():
-				_ = s.Close()
-			}
-
-		default:
-			slog.ErrorContext(ctx, "unexpected state while handling incomming connection", slog.Any("state", s.State()))
+		select {
+		case req.ch <- conn:
+		case <-req.ctx.Done():
 			_ = s.Close()
 		}
+
+	default:
+		slog.Error("unexpected state while handling incomming connection", slog.Any("state", s.State()))
+		_ = s.Close()
 	}
 }
 
