@@ -73,6 +73,15 @@ func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
 
 	ctx, c.cancel = context.WithCancel(ctx)
 
+	c.wg.Add(1)
+
+	go func() {
+		defer c.wg.Done()
+		<-ctx.Done()
+
+		_ = c.conn.Close()
+	}()
+
 	if err := c.establish(); err != nil {
 		c.cancel()
 		return fmt.Errorf("failed to init client: %w", err)
@@ -85,14 +94,7 @@ func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
 
 	c.state = registered
 
-	c.wg.Add(2)
-
-	go func() {
-		defer c.wg.Done()
-		<-ctx.Done()
-
-		_ = c.conn.Close()
-	}()
+	c.wg.Add(1)
 
 	go func() {
 		defer c.wg.Done()
@@ -121,7 +123,7 @@ func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
 // The ID parameter represents the identifier used for binding.
 // This function initializes the client and handles the bind operation.
 // It returns an error if the client initialization or bind operation fails.
-func (c *Client) Bind(id uuid.UUID) error {
+func (c *Client) Bind(ctx context.Context, id uuid.UUID) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -130,6 +132,16 @@ func (c *Client) Bind(id uuid.UUID) error {
 	}
 
 	c.state = processing
+
+	ctx, c.cancel = context.WithCancel(ctx)
+
+	c.wg.Add(1)
+	go func() {
+		defer c.wg.Done()
+		<-ctx.Done()
+
+		_ = c.conn.Close()
+	}()
 
 	if err := c.establish(); err != nil {
 		return fmt.Errorf("failed to init client: %w", err)
