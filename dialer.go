@@ -187,7 +187,23 @@ func (d *Dialer) serve(ctx context.Context) {
 	}
 }
 
-func (d *Dialer) handleConnection(_ context.Context, conn net.Conn) {
+// handleConnection manages a single incoming connection and processes its state.
+// It takes ctx of type context.Context for managing the lifecycle of the operation and conn of type net.Conn for the connection.
+// It does not return any value. If an error occurs during state processing, the connection is closed or ignored.
+// It handles different states (Registered, Bound) and adds or removes connections to/from the connection manager.
+func (d *Dialer) handleConnection(ctx context.Context, conn net.Conn) {
+	done := make(chan struct{})
+	ctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+
+	go func() {
+		select {
+		case <-ctx.Done():
+			_ = conn.Close()
+		case <-done:
+		}
+	}()
+
 	s := proto.NewServer(conn, d.serverOpts...)
 	if err := s.Process(); err != nil {
 		return
@@ -196,25 +212,28 @@ func (d *Dialer) handleConnection(_ context.Context, conn net.Conn) {
 	switch s.State() {
 	case proto.StateRegistered:
 		d.cm.AddConnection(s)
+		close(done)
+		return
 
 	case proto.StateBound:
 		id := s.ID()
 		req := d.removeRequest(id)
 
 		if req == nil {
-			_ = s.Close()
 			return
 		}
 
 		select {
 		case req.ch <- conn:
+			close(done)
+			return
 		case <-req.ctx.Done():
-			_ = s.Close()
+			return
 		}
 
 	default:
 		slog.Error("unexpected state while handling incomming connection", slog.Any("state", s.State()))
-		_ = s.Close()
+		return
 	}
 }
 
