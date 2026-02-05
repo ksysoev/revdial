@@ -84,6 +84,7 @@ func TestListenerDialer(t *testing.T) {
 	defer func() { _ = listener.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
 
@@ -135,6 +136,7 @@ func TestListenerDialer_WithUserPassAuth_Success(t *testing.T) {
 	defer func() { _ = listener.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
 
@@ -200,6 +202,7 @@ func TestListenerDialer_WithTLS_Success(t *testing.T) {
 	defer func() { _ = listener.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
 
@@ -315,6 +318,7 @@ func TestListenerDialer_WithTLSAndAuth_Success(t *testing.T) {
 	defer func() { _ = listener.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
 

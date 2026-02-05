@@ -41,6 +41,7 @@ func TestListen_RegisterFail(t *testing.T) {
 	assert.NoError(t, err)
 
 	done := make(chan struct{})
+
 	go func() {
 		conn, err := mockListener.Accept()
 		assert.NoError(t, err)
@@ -68,6 +69,7 @@ func TestListen(t *testing.T) {
 	assert.NoError(t, err)
 
 	done := make(chan struct{})
+
 	go func() {
 		conn, err := mockListener.Accept()
 		assert.NoError(t, err)
@@ -105,6 +107,7 @@ func TestListener_Accept_Closed(t *testing.T) {
 	assert.NoError(t, err)
 
 	done := make(chan struct{})
+
 	go func() {
 		conn, err := mockListener.Accept()
 		assert.NoError(t, err)

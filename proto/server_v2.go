@@ -116,6 +116,7 @@ func (s *ServerV2) processV2AfterAuth() error {
 
 	// Upgrade connection to yamux session (server mode)
 	yamuxCfg := s.muxConfig.ToYamux()
+
 	session, err := yamux.Server(s.conn, yamuxCfg)
 	if err != nil {
 		return fmt.Errorf("failed to create yamux session: %w", err)

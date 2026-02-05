@@ -93,5 +93,6 @@ func (s *AutoScaler) Evaluate(metrics *Metrics) ScaleAction {
 func (s *AutoScaler) RecordScale() {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.lastScaleTime = time.Now()
 }

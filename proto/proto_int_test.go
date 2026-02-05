@@ -14,12 +14,15 @@ func TestRegister_Success(t *testing.T) {
 	conn1, conn2 := net.Pipe()
 
 	client := NewClient(conn1)
+
 	defer func() { _ = client.Close() }()
 
 	server := NewServer(conn2)
+
 	defer func() { _ = server.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		err := server.Process()
 		assert.NoError(t, err)
@@ -47,9 +50,11 @@ func TestRegister_Failure(t *testing.T) {
 	defer func() { _ = conn2.Close() }()
 
 	client := NewClient(conn1)
+
 	defer func() { _ = client.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		buf := make([]byte, 3)
 		_, err := conn2.Read(buf)
@@ -81,12 +86,15 @@ func TestSendCommand(t *testing.T) {
 	conn1, conn2 := net.Pipe()
 
 	client := NewClient(conn1)
+
 	defer func() { _ = client.Close() }()
 
 	server := NewServer(conn2)
+
 	defer func() { _ = server.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		err := server.Process()
 		assert.NoError(t, err)
@@ -127,12 +135,15 @@ func TestSendCommand_Failure(t *testing.T) {
 	conn1, conn2 := net.Pipe()
 
 	client := NewClient(conn1)
+
 	defer func() { _ = client.Close() }()
 
 	server := NewServer(conn2)
+
 	defer func() { _ = server.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		err := server.Process()
 		assert.NoError(t, err)
@@ -171,12 +182,15 @@ func TestBind_Success(t *testing.T) {
 	conn1, conn2 := net.Pipe()
 
 	client := NewClient(conn1)
+
 	defer func() { _ = client.Close() }()
 
 	server := NewServer(conn2)
+
 	defer func() { _ = server.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		err := server.Process()
 		assert.NoError(t, err)
@@ -198,12 +212,15 @@ func TestBind_Success(t *testing.T) {
 
 func TestBind_Failure(t *testing.T) {
 	conn1, conn2 := net.Pipe()
+
 	defer func() { _ = conn2.Close() }()
 
 	client := NewClient(conn1)
+
 	defer func() { _ = client.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		buf := make([]byte, 3)
 		_, err := conn2.Read(buf)
@@ -234,14 +251,17 @@ func TestRegister_WithUserPassAuth_Success(t *testing.T) {
 	assert.NoError(t, err)
 
 	client := NewClient(conn1, clientOpt)
+
 	defer func() { _ = client.Close() }()
 
 	server := NewServer(conn2, WithUserPassAuth(func(user, pass string) bool {
 		return user == "user" && pass == "pass"
 	}))
+
 	defer func() { _ = server.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		err := server.Process()
 		assert.NoError(t, err)
@@ -270,14 +290,17 @@ func TestRegister_WithUserPassAuth_IncorrectPass(t *testing.T) {
 	assert.NoError(t, err)
 
 	client := NewClient(conn1, clientOpt)
+
 	defer func() { _ = client.Close() }()
 
 	server := NewServer(conn2, WithUserPassAuth(func(user, pass string) bool {
 		return user == "user" && pass == "pass"
 	}))
+
 	defer func() { _ = server.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		err := server.Process()
 		assert.Error(t, err)
@@ -301,12 +324,15 @@ func TestPing_Success(t *testing.T) {
 	conn1, conn2 := net.Pipe()
 
 	client := NewClient(conn1)
+
 	defer func() { _ = client.Close() }()
 
 	server := NewServer(conn2)
+
 	defer func() { _ = server.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		err := server.Process()
 		assert.NoError(t, err)
@@ -337,6 +363,7 @@ func TestSendCustomEvent(t *testing.T) {
 	defer func() { _ = client.Close() }()
 
 	server := NewServer(conn2)
+
 	defer func() { _ = server.Close() }()
 
 	expectedEventType := "test_event_type"
@@ -362,6 +389,7 @@ func TestSendCustomEvent(t *testing.T) {
 
 	err := client.Register(ctx, uuid.New())
 	assert.NoError(t, err)
+
 	select {
 	case <-connected:
 	case <-time.After(100 * time.Millisecond):

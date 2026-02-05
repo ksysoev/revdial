@@ -58,6 +58,7 @@ func (c *ClientV2) Register(ctx context.Context, id uuid.UUID) error {
 
 	go func() {
 		defer c.wg.Done()
+
 		<-ctx.Done()
 
 		_ = c.conn.Close()
@@ -112,6 +113,7 @@ func (c *ClientV2) tryV2Registration(ctx context.Context, id uuid.UUID) error {
 
 	// Upgrade to yamux session (client mode)
 	yamuxCfg := c.muxConfig.ToYamux()
+
 	session, err := yamux.Client(c.conn, yamuxCfg)
 	if err != nil {
 		return fmt.Errorf("failed to create yamux session: %w", err)

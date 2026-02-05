@@ -9,6 +9,7 @@ import (
 
 func TestNewClient(t *testing.T) {
 	conn, _ := net.Pipe()
+
 	defer func() { _ = conn.Close() }()
 
 	client := NewClient(conn)
@@ -24,6 +25,7 @@ func TestNewClient(t *testing.T) {
 
 func TestCommands(t *testing.T) {
 	conn, _ := net.Pipe()
+
 	defer func() { _ = conn.Close() }()
 
 	client := NewClient(conn)

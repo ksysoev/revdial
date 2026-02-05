@@ -74,6 +74,7 @@ func TestCustomEventCommand_ParsePayload(t *testing.T) {
 			command := CustomEventCommand{Data: tc.data}
 
 			var output map[string]string
+
 			err := command.ParsePayload(&output)
 
 			if tc.shouldErr {

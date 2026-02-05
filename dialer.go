@@ -79,6 +79,7 @@ func (d *Dialer) Start(ctx context.Context) error {
 
 	go func() {
 		defer d.wg.Done()
+
 		d.serve(ctx)
 	}()
 
@@ -129,11 +130,11 @@ func (d *Dialer) DialContext(ctx context.Context) (net.Conn, error) {
 	}
 
 	id := uuid.New()
+
 	ch := d.addRequest(ctx, id)
 	defer d.removeRequest(id)
 
 	err := s.SendConnectCommand(id)
-
 	if err != nil {
 		return nil, fmt.Errorf("failed to request connection: %w", err)
 	}
@@ -184,6 +185,7 @@ func (d *Dialer) serve(ctx context.Context) {
 
 		go func() {
 			defer wg.Done()
+
 			d.handleConnection(ctx, conn)
 		}()
 	}
@@ -293,20 +295,26 @@ func (d *Dialer) handleV2Stream(ctx context.Context, stream net.Conn) {
 	buf := make([]byte, 2)
 	if _, err := stream.Read(buf); err != nil {
 		slog.Error("failed to read command from stream", slog.Any("error", err))
+
 		_ = stream.Close()
+
 		return
 	}
 
 	// V2 streams use V1 format for compatibility
 	if buf[0] != 1 { // versionV1
 		slog.Error("unexpected version in stream", slog.Int("version", int(buf[0])))
+
 		_ = stream.Close()
+
 		return
 	}
 
 	if buf[1] != proto.CmdBind() {
 		slog.Error("unexpected command in stream", slog.Int("command", int(buf[1])))
+
 		_ = stream.Close()
+
 		return
 	}
 
@@ -314,21 +322,27 @@ func (d *Dialer) handleV2Stream(ctx context.Context, stream net.Conn) {
 	uuidBuf := make([]byte, 16)
 	if _, err := stream.Read(uuidBuf); err != nil {
 		slog.Error("failed to read UUID from stream", slog.Any("error", err))
+
 		_ = stream.Close()
+
 		return
 	}
 
 	id, err := uuid.FromBytes(uuidBuf)
 	if err != nil {
 		slog.Error("failed to parse UUID", slog.Any("error", err))
+
 		_ = stream.Close()
+
 		return
 	}
 
 	// Send success response (using V1 format for compatibility)
 	if _, err := stream.Write([]byte{1, proto.ResSuccess()}); err != nil { // versionV1
 		slog.Error("failed to write response", slog.Any("error", err))
+
 		_ = stream.Close()
+
 		return
 	}
 
@@ -336,7 +350,9 @@ func (d *Dialer) handleV2Stream(ctx context.Context, stream net.Conn) {
 	req := d.removeRequest(id)
 	if req == nil {
 		slog.Error("no pending request for stream", slog.String("id", id.String()))
+
 		_ = stream.Close()
+
 		return
 	}
 

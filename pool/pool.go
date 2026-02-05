@@ -131,6 +131,7 @@ func (p *Pool) Start(ctx context.Context, onNewConn func(context.Context) (*MuxC
 
 	go func() {
 		defer p.wg.Done()
+
 		p.monitorAndScale()
 	}()
 }
@@ -326,6 +327,7 @@ func (p *Pool) scaleDown() error {
 
 	// Find connection with fewest streams
 	var target *MuxConn
+
 	minStreams := -1
 
 	for _, conn := range p.connections {

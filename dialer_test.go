@@ -89,6 +89,7 @@ func TestDialer_DialContext_ConnectionAvailable(t *testing.T) {
 	go func() {
 		mockListener, err := Listen(context.Background(), dialer.Addr())
 		require.NoError(t, err, "Listener should start without error")
+
 		defer mockListener.Close()
 
 		close(ready)
@@ -140,6 +141,7 @@ func TestDialer_DialContext_ContextCancelled(t *testing.T) {
 
 		mockListener, err := Listen(context.Background(), dialer.Addr())
 		require.NoError(t, err, "Listener should start without error")
+
 		defer mockListener.Close()
 
 		close(ready)
@@ -184,11 +186,13 @@ func TestDialer_DialContext_FailedToSendConnectCommand(t *testing.T) {
 	}()
 
 	ready := make(chan struct{})
+
 	go func() {
 		defer close(ready)
 
 		mockListener, err := Listen(context.Background(), dialer.Addr())
 		require.NoError(t, err, "Listener should start without error")
+
 		defer mockListener.Close()
 	}()
 
