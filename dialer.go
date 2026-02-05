@@ -212,7 +212,7 @@ func (d *Dialer) handleConnection(ctx context.Context, conn net.Conn) {
 	}()
 
 	// Use ServerV2 which handles both V1 and V2 protocols
-	s := proto.NewServerV2(conn, d.serverOpts...)
+	s := proto.NewServerV2(conn, d.serverOpts)
 	if err := s.Process(); err != nil {
 		return
 	}

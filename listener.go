@@ -35,6 +35,7 @@ type Listener struct {
 	poolConfig    *pool.Config
 	muxConfig     *mux.Config
 	clientOpts    []proto.ClientOption
+	clientV2Opts  []proto.ClientV2Option
 	useV2         bool
 	disableV1     bool
 }
@@ -77,7 +78,7 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 	}
 
 	// Use ClientV2 which supports both protocols
-	l.client = proto.NewClientV2(conn, l.clientOpts...)
+	l.client = proto.NewClientV2(conn, l.clientOpts, l.clientV2Opts...)
 
 	err = l.client.Register(l.ctx, uuid.New())
 	if err != nil {
@@ -106,14 +107,14 @@ func (l *Listener) createPoolConnection(ctx context.Context) (*pool.MuxConn, err
 		return nil, fmt.Errorf("failed to connect: %w", err)
 	}
 
-	client := proto.NewClientV2(conn, l.clientOpts...)
+	client := proto.NewClientV2(conn, l.clientOpts, l.clientV2Opts...)
 	if err := client.Register(ctx, uuid.New()); err != nil {
-		_ = conn.Close()
+		_ = client.Close()
 		return nil, fmt.Errorf("failed to register: %w", err)
 	}
 
 	if !client.IsV2() {
-		_ = conn.Close()
+		_ = client.Close()
 		return nil, fmt.Errorf("server does not support V2")
 	}
 
@@ -248,6 +249,10 @@ func (l *Listener) bindStream(stream net.Conn, id uuid.UUID) error {
 func (l *Listener) Close() error {
 	l.cancel()
 
+	if l.pool != nil {
+		_ = l.pool.Close()
+	}
+
 	return l.client.Close()
 }
 
@@ -315,7 +320,7 @@ func WithPoolConfig(config *pool.Config) ListenerOption {
 func WithMuxConfig(config *mux.Config) ListenerOption {
 	return func(l *Listener) {
 		l.muxConfig = config
-		l.clientOpts = append(l.clientOpts, proto.WithMuxConfigClient(config))
+		l.clientV2Opts = append(l.clientV2Opts, proto.WithMuxConfigClient(config))
 	}
 }
 

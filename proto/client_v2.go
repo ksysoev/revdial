@@ -22,18 +22,21 @@ type ClientV2 struct {
 	isV2      bool
 }
 
+// ClientV2Option is a configuration option for ClientV2.
+type ClientV2Option func(*ClientV2)
+
 // NewClientV2 creates a new ClientV2 instance with V2 protocol support.
 // It takes a connection and optional client options.
-func NewClientV2(conn io.ReadWriteCloser, opts ...ClientOption) *ClientV2 {
+func NewClientV2(conn io.ReadWriteCloser, baseOpts []ClientOption, v2Opts ...ClientV2Option) *ClientV2 {
 	c2 := &ClientV2{
-		Client:    NewClient(conn),
+		Client:    NewClient(conn, baseOpts...),
 		muxConfig: mux.DefaultConfig(),
 		isV2:      false,
 	}
 
-	// Apply options to the ClientV2 instance
-	for _, opt := range opts {
-		opt(c2.Client)
+	// Apply V2-specific options
+	for _, opt := range v2Opts {
+		opt(c2)
 	}
 
 	return c2
@@ -119,8 +122,10 @@ func (c *ClientV2) tryV2Registration(ctx context.Context, id uuid.UUID) error {
 		return fmt.Errorf("failed to create yamux session: %w", err)
 	}
 
+	c.mu.Lock()
 	c.session = session
 	c.isV2 = true
+	c.mu.Unlock()
 
 	// Open control stream
 	controlStream, err := session.OpenStream()
@@ -176,7 +181,9 @@ func (c *ClientV2) tryV2Registration(ctx context.Context, id uuid.UUID) error {
 
 // registerV1 registers using V1 protocol.
 func (c *ClientV2) registerV1(ctx context.Context, id uuid.UUID) error {
+	c.mu.Lock()
 	c.isV2 = false
+	c.mu.Unlock()
 
 	// Establish connection (auth) - needed for V1
 	if err := c.establish(); err != nil {
@@ -220,7 +227,11 @@ func (c *ClientV2) registerV1(ctx context.Context, id uuid.UUID) error {
 
 // Bind binds to a specific connection ID using either V2 stream or V1 connection.
 func (c *ClientV2) Bind(ctx context.Context, id uuid.UUID) error {
-	if c.isV2 {
+	c.mu.RLock()
+	isV2 := c.isV2
+	c.mu.RUnlock()
+
+	if isV2 {
 		return c.bindV2Stream(ctx, id)
 	}
 
@@ -266,6 +277,9 @@ func (c *ClientV2) bindV2Stream(_ context.Context, id uuid.UUID) error {
 
 // IsV2 returns true if using V2 protocol with multiplexing.
 func (c *ClientV2) IsV2() bool {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	return c.isV2
 }
 
@@ -277,8 +291,13 @@ func (c *ClientV2) Session() *yamux.Session {
 // Close closes the client connection and yamux session if in V2 mode.
 func (c *ClientV2) Close() error {
 	// Close yamux session first if in V2 mode
-	if c.isV2 && c.session != nil {
-		_ = c.session.Close()
+	c.mu.RLock()
+	isV2 := c.isV2
+	session := c.session
+	c.mu.RUnlock()
+
+	if isV2 && session != nil {
+		_ = session.Close()
 	}
 
 	// Call parent Close to handle context cancellation and wait for goroutines
@@ -286,11 +305,9 @@ func (c *ClientV2) Close() error {
 }
 
 // WithMuxConfigClient sets the multiplexing configuration for V2 connections.
-func WithMuxConfigClient(config *mux.Config) ClientOption {
-	return func(c *Client) {
-		if c2, ok := interface{}(c).(*ClientV2); ok {
-			c2.muxConfig = config
-		}
+func WithMuxConfigClient(config *mux.Config) ClientV2Option {
+	return func(c *ClientV2) {
+		c.muxConfig = config
 	}
 }
 

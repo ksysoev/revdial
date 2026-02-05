@@ -30,7 +30,7 @@ type Client struct {
 	token     []byte
 	wg        sync.WaitGroup
 	authMode  byte
-	mu        sync.Mutex
+	mu        sync.RWMutex
 	state     clientState
 	disableV2 bool // When true, forces V1-only mode in ClientV2
 }

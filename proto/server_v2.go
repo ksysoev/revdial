@@ -20,14 +20,24 @@ type ServerV2 struct {
 	isV2      bool
 }
 
+// ServerV2Option is a configuration option for ServerV2.
+type ServerV2Option func(*ServerV2)
+
 // NewServerV2 creates a new ServerV2 instance with the given connection and options.
 // It wraps the V1 server and adds V2 multiplexing capabilities.
-func NewServerV2(conn net.Conn, opts ...ServerOption) *ServerV2 {
-	return &ServerV2{
-		Server:    NewServer(conn, opts...),
+func NewServerV2(conn net.Conn, baseOpts []ServerOption, v2Opts ...ServerV2Option) *ServerV2 {
+	s2 := &ServerV2{
+		Server:    NewServer(conn, baseOpts...),
 		muxConfig: mux.DefaultConfig(),
 		isV2:      false,
 	}
+
+	// Apply V2-specific options
+	for _, opt := range v2Opts {
+		opt(s2)
+	}
+
+	return s2
 }
 
 // Process processes the incoming connection and handles version negotiation.
@@ -81,19 +91,11 @@ func (s *ServerV2) Process() error {
 // It reads the mux init command, establishes the yamux session, and handles registration.
 func (s *ServerV2) processV2AfterAuth() error {
 	// Read mux configuration (12 bytes: 3 x uint32)
+	// Note: This reads the client's config but we use our own server config for yamux
 	configBuf := make([]byte, 12)
 	if _, err := io.ReadFull(s.conn, configBuf); err != nil {
 		return fmt.Errorf("failed to read mux config: %w", err)
 	}
-
-	clientMaxStreams := binary.BigEndian.Uint32(configBuf[0:4])
-	clientStreamWindow := binary.BigEndian.Uint32(configBuf[4:8])
-	clientConnWindow := binary.BigEndian.Uint32(configBuf[8:12])
-
-	// Negotiate configuration (use minimums for safety)
-	negotiatedMaxStreams := min(clientMaxStreams, s.muxConfig.MaxStreams)
-	negotiatedStreamWindow := min(clientStreamWindow, s.muxConfig.StreamWindowSize)
-	negotiatedConnWindow := min(clientConnWindow, s.muxConfig.ConnectionWindowSize)
 
 	// Send MuxReady response (using V1 format for compatibility)
 	respBuf := make([]byte, 2)
@@ -104,11 +106,11 @@ func (s *ServerV2) processV2AfterAuth() error {
 		return fmt.Errorf("failed to write mux ready: %w", err)
 	}
 
-	// Send negotiated configuration (12 bytes)
+	// Send our server configuration (12 bytes)
 	configResp := make([]byte, 12)
-	binary.BigEndian.PutUint32(configResp[0:4], negotiatedMaxStreams)
-	binary.BigEndian.PutUint32(configResp[4:8], negotiatedStreamWindow)
-	binary.BigEndian.PutUint32(configResp[8:12], negotiatedConnWindow)
+	binary.BigEndian.PutUint32(configResp[0:4], s.muxConfig.MaxStreams)
+	binary.BigEndian.PutUint32(configResp[4:8], s.muxConfig.StreamWindowSize)
+	binary.BigEndian.PutUint32(configResp[8:12], s.muxConfig.ConnectionWindowSize)
 
 	if _, err := s.conn.Write(configResp); err != nil {
 		return fmt.Errorf("failed to write mux config: %w", err)
@@ -239,10 +241,8 @@ func (s *ServerV2) SendCustomEvent(eventName string, data any) error {
 }
 
 // WithMuxConfig sets the multiplexing configuration for V2 connections.
-func WithMuxConfig(config *mux.Config) ServerOption {
-	return func(s *Server) {
-		if s2, ok := interface{}(s).(*ServerV2); ok {
-			s2.muxConfig = config
-		}
+func WithMuxConfig(config *mux.Config) ServerV2Option {
+	return func(s *ServerV2) {
+		s.muxConfig = config
 	}
 }
