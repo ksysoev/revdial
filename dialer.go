@@ -193,6 +193,7 @@ func (d *Dialer) serve(ctx context.Context) {
 // It takes ctx of type context.Context for managing the lifecycle of the operation and conn of type net.Conn for the connection.
 // It does not return any value. If an error occurs during state processing, the connection is closed or ignored.
 // It handles different states (Registered, Bound) and adds or removes connections to/from the connection manager.
+// It supports both V1 and V2 protocols with automatic detection.
 func (d *Dialer) handleConnection(ctx context.Context, conn net.Conn) {
 	done := make(chan struct{})
 	ctx, cancel := context.WithCancel(ctx)
@@ -207,14 +208,22 @@ func (d *Dialer) handleConnection(ctx context.Context, conn net.Conn) {
 		}
 	}()
 
-	s := proto.NewServer(conn, d.serverOpts...)
+	// Use ServerV2 which handles both V1 and V2 protocols
+	s := proto.NewServerV2(conn, d.serverOpts...)
 	if err := s.Process(); err != nil {
 		return
 	}
 
 	switch s.State() {
 	case proto.StateRegistered:
-		d.cm.AddConnection(s)
+		// For V2 connections, we need to handle streams differently
+		if s.IsV2() {
+			d.handleV2RegisteredConnection(ctx, s)
+		} else {
+			// V1 connection - add to connection manager
+			d.cm.AddConnection(s)
+		}
+
 		close(done)
 
 		return
@@ -237,6 +246,106 @@ func (d *Dialer) handleConnection(ctx context.Context, conn net.Conn) {
 	default:
 		slog.Error("unexpected state while handling incoming connection", slog.Any("state", s.State()))
 		return
+	}
+}
+
+// handleV2RegisteredConnection handles a registered V2 connection with multiplexing support.
+// It spawns a goroutine to accept incoming streams and match them to connection requests.
+func (d *Dialer) handleV2RegisteredConnection(ctx context.Context, s *proto.ServerV2) {
+	// Add the V2 server to connection manager (it implements ServerConn interface)
+	d.cm.AddConnection(s)
+
+	// Start accepting streams in the background
+	d.wg.Add(1)
+
+	go func() {
+		defer d.wg.Done()
+		defer d.cm.RemoveConnection(s.ID())
+
+		for {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				stream, err := s.AcceptStream()
+				if err != nil {
+					slog.Error("failed to accept stream", slog.Any("error", err))
+					return
+				}
+
+				// Read the bind command from the stream
+				go d.handleV2Stream(ctx, stream)
+			}
+		}
+	}()
+}
+
+// handleV2Stream handles an incoming stream in V2 mode by reading the bind command
+// and matching it to a pending connection request.
+func (d *Dialer) handleV2Stream(ctx context.Context, stream net.Conn) {
+	defer func() {
+		if r := recover(); r != nil {
+			_ = stream.Close()
+		}
+	}()
+
+	// Read version and command
+	buf := make([]byte, 2)
+	if _, err := stream.Read(buf); err != nil {
+		slog.Error("failed to read command from stream", slog.Any("error", err))
+		_ = stream.Close()
+		return
+	}
+
+	if buf[0] != proto.VersionV2() {
+		slog.Error("unexpected version in stream", slog.Int("version", int(buf[0])))
+		_ = stream.Close()
+		return
+	}
+
+	if buf[1] != proto.CmdBind() {
+		slog.Error("unexpected command in stream", slog.Int("command", int(buf[1])))
+		_ = stream.Close()
+		return
+	}
+
+	// Read UUID (16 bytes)
+	uuidBuf := make([]byte, 16)
+	if _, err := stream.Read(uuidBuf); err != nil {
+		slog.Error("failed to read UUID from stream", slog.Any("error", err))
+		_ = stream.Close()
+		return
+	}
+
+	id, err := uuid.FromBytes(uuidBuf)
+	if err != nil {
+		slog.Error("failed to parse UUID", slog.Any("error", err))
+		_ = stream.Close()
+		return
+	}
+
+	// Send success response
+	if _, err := stream.Write([]byte{proto.VersionV2(), proto.ResSuccess()}); err != nil {
+		slog.Error("failed to write response", slog.Any("error", err))
+		_ = stream.Close()
+		return
+	}
+
+	// Find the connection request
+	req := d.removeRequest(id)
+	if req == nil {
+		slog.Error("no pending request for stream", slog.String("id", id.String()))
+		_ = stream.Close()
+		return
+	}
+
+	// Deliver the stream to the requester
+	select {
+	case req.ch <- stream:
+	case <-req.ctx.Done():
+		_ = stream.Close()
+	case <-ctx.Done():
+		_ = stream.Close()
 	}
 }
 

@@ -25,3 +25,18 @@ const (
 	resSuccess byte = 0
 	resFailure byte = 1
 )
+
+// VersionV2 returns the V2 protocol version byte.
+func VersionV2() byte {
+	return versionV2
+}
+
+// CmdBind returns the bind command byte.
+func CmdBind() byte {
+	return cmdBind
+}
+
+// ResSuccess returns the success response byte.
+func ResSuccess() byte {
+	return resSuccess
+}
