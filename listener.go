@@ -219,9 +219,10 @@ func (l *Listener) acceptV1Connection(id uuid.UUID) (net.Conn, error) {
 }
 
 // bindStream sends a bind command on the given stream.
+// V2 streams use V1 format for compatibility with existing protocol parsing.
 func (l *Listener) bindStream(stream net.Conn, id uuid.UUID) error {
 	req := make([]byte, 18)
-	req[0] = proto.VersionV2()
+	req[0] = 1 // versionV1 - V2 streams use V1 format for compatibility
 	req[1] = proto.CmdBind()
 	copy(req[2:], id[:])
 
@@ -235,7 +236,7 @@ func (l *Listener) bindStream(stream net.Conn, id uuid.UUID) error {
 		return fmt.Errorf("failed to read bind response: %w", err)
 	}
 
-	if resp[0] != proto.VersionV2() || resp[1] != proto.ResSuccess() {
+	if resp[0] != 1 || resp[1] != proto.ResSuccess() {
 		return fmt.Errorf("bind failed: version=%d, result=%d", resp[0], resp[1])
 	}
 

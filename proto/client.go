@@ -43,7 +43,7 @@ type ClientOption func(*Client)
 func NewClient(conn io.ReadWriteCloser, opts ...ClientOption) *Client {
 	c := &Client{
 		conn:     conn,
-		cmds:     make(chan Command),
+		cmds:     make(chan Command, 10), // Buffered channel to prevent deadlocks
 		authMode: noAuth,
 	}
 

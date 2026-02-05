@@ -399,7 +399,6 @@ func TestListenerDialer_WithEventHandler(t *testing.T) {
 	}
 }
 
-/* TODO: Fix V2 integration test - connection manager not seeing registered V2 connections
 func TestListenerDialer_V2Protocol(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
@@ -426,11 +425,12 @@ func TestListenerDialer_V2Protocol(t *testing.T) {
 	assert.True(t, listener.client.IsV2(), "Expected V2 protocol to be used")
 	assert.NotNil(t, listener.client.Session(), "Expected yamux session to be created")
 
-	// Give the dialer a moment to register the connection
-	time.Sleep(200 * time.Millisecond)
+	// Give time for registration to complete
+	time.Sleep(100 * time.Millisecond)
 
 	// Test that connections work with V2 (streams instead of TCP)
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
 
@@ -443,6 +443,7 @@ func TestListenerDialer_V2Protocol(t *testing.T) {
 			if err != nil {
 				t.Errorf("failed to write to connection: %v", err)
 			}
+
 			_ = conn.Close()
 		}
 	}()
@@ -465,4 +466,3 @@ func TestListenerDialer_V2Protocol(t *testing.T) {
 		t.Error("expected connection to be accepted")
 	}
 }
-*/

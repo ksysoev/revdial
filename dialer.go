@@ -20,6 +20,7 @@ type connRequest struct {
 
 type Dialer struct {
 	listener   net.Listener
+	ctx        context.Context
 	cancel     context.CancelFunc
 	cm         *connmng.ConnManager
 	requests   map[uuid.UUID]*connRequest
@@ -56,7 +57,7 @@ func (d *Dialer) Start(ctx context.Context) error {
 	d.mu.Lock()
 	defer d.mu.Unlock()
 
-	ctx, d.cancel = context.WithCancel(ctx)
+	d.ctx, d.cancel = context.WithCancel(ctx)
 
 	var (
 		l   net.Listener
@@ -80,13 +81,13 @@ func (d *Dialer) Start(ctx context.Context) error {
 	go func() {
 		defer d.wg.Done()
 
-		d.serve(ctx)
+		d.serve(d.ctx)
 	}()
 
 	go func() {
 		defer d.wg.Done()
 
-		<-ctx.Done()
+		<-d.ctx.Done()
 
 		_ = d.listener.Close()
 	}()
@@ -253,7 +254,7 @@ func (d *Dialer) handleConnection(ctx context.Context, conn net.Conn) {
 
 // handleV2RegisteredConnection handles a registered V2 connection with multiplexing support.
 // It spawns a goroutine to accept incoming streams and match them to connection requests.
-func (d *Dialer) handleV2RegisteredConnection(ctx context.Context, s *proto.ServerV2) {
+func (d *Dialer) handleV2RegisteredConnection(_ context.Context, s *proto.ServerV2) {
 	// Add the V2 server to connection manager (it implements ServerConn interface)
 	d.cm.AddConnection(s)
 
@@ -266,7 +267,7 @@ func (d *Dialer) handleV2RegisteredConnection(ctx context.Context, s *proto.Serv
 
 		for {
 			select {
-			case <-ctx.Done():
+			case <-d.ctx.Done():
 				return
 			default:
 				stream, err := s.AcceptStream()
@@ -276,7 +277,7 @@ func (d *Dialer) handleV2RegisteredConnection(ctx context.Context, s *proto.Serv
 				}
 
 				// Read the bind command from the stream
-				go d.handleV2Stream(ctx, stream)
+				go d.handleV2Stream(d.ctx, stream)
 			}
 		}
 	}()
@@ -346,23 +347,27 @@ func (d *Dialer) handleV2Stream(ctx context.Context, stream net.Conn) {
 		return
 	}
 
-	// Find the connection request
+	// Find the pending request and send the stream
 	req := d.removeRequest(id)
 	if req == nil {
-		slog.Error("no pending request for stream", slog.String("id", id.String()))
+		slog.Error("no pending request found for UUID", slog.String("id", id.String()))
 
 		_ = stream.Close()
 
 		return
 	}
 
-	// Deliver the stream to the requester
 	select {
 	case req.ch <- stream:
+		return
 	case <-req.ctx.Done():
 		_ = stream.Close()
+
+		return
 	case <-ctx.Done():
 		_ = stream.Close()
+
+		return
 	}
 }
 

@@ -274,6 +274,17 @@ func (c *ClientV2) Session() *yamux.Session {
 	return c.session
 }
 
+// Close closes the client connection and yamux session if in V2 mode.
+func (c *ClientV2) Close() error {
+	// Close yamux session first if in V2 mode
+	if c.isV2 && c.session != nil {
+		_ = c.session.Close()
+	}
+
+	// Call parent Close to handle context cancellation and wait for goroutines
+	return c.Client.Close()
+}
+
 // WithMuxConfigClient sets the multiplexing configuration for V2 connections.
 func WithMuxConfigClient(config *mux.Config) ClientOption {
 	return func(c *Client) {
