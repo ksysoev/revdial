@@ -328,13 +328,16 @@ func (p *Pool) scaleDown() error {
 	// Find connection with fewest streams
 	var target *MuxConn
 
+	var targetIdx int
+
 	minStreams := -1
 
-	for _, conn := range p.connections {
+	for i, conn := range p.connections {
 		streams := conn.NumStreams()
 		if minStreams == -1 || streams < minStreams {
 			minStreams = streams
 			target = conn
+			targetIdx = i
 		}
 	}
 
@@ -346,12 +349,19 @@ func (p *Pool) scaleDown() error {
 		slog.Int("current_connections", len(p.connections)),
 		slog.Int("target_streams", minStreams))
 
-	// Remove by unlocking and calling RemoveConnection
-	p.mu.Unlock()
-	err := p.RemoveConnection(target)
-	p.mu.Lock()
+	// Close the connection
+	if err := target.Close(); err != nil {
+		slog.Error("failed to close connection during scale down", slog.Any("error", err))
+	}
 
-	return err
+	// Remove from slice
+	p.connections = append(p.connections[:targetIdx], p.connections[targetIdx+1:]...)
+	p.metrics.SetConnectionCount(len(p.connections))
+
+	slog.Info("removed connection from pool",
+		slog.Int("total_connections", len(p.connections)))
+
+	return nil
 }
 
 // poolTrackedStream wraps a stream to track closure for pool metrics.

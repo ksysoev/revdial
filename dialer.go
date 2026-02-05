@@ -338,7 +338,7 @@ func (d *Dialer) handleV2Stream(ctx context.Context, stream net.Conn) {
 	}
 
 	// Send success response (using V1 format for compatibility)
-	if _, err := stream.Write([]byte{1, proto.ResSuccess()}); err != nil { // versionV1
+	if _, err := stream.Write([]byte{proto.VersionV1(), proto.ResSuccess()}); err != nil {
 		slog.Error("failed to write response", slog.Any("error", err))
 
 		_ = stream.Close()

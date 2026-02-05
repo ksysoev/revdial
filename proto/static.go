@@ -26,6 +26,11 @@ const (
 	resFailure byte = 1
 )
 
+// VersionV1 returns the V1 protocol version byte.
+func VersionV1() byte {
+	return versionV1
+}
+
 // VersionV2 returns the V2 protocol version byte.
 func VersionV2() byte {
 	return versionV2

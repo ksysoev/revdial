@@ -32,12 +32,10 @@ type Listener struct {
 	client        *proto.ClientV2
 	eventHandlers map[proto.CommandType]EventHandler
 	pool          *pool.Pool
-	poolConfig    *pool.Config
 	muxConfig     *mux.Config
 	clientOpts    []proto.ClientOption
 	clientV2Opts  []proto.ClientV2Option
 	useV2         bool
-	disableV1     bool
 }
 
 type ListenerOption func(*Listener)
@@ -82,6 +80,10 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 
 	err = l.client.Register(l.ctx, uuid.New())
 	if err != nil {
+		l.cancel()
+
+		_ = conn.Close()
+
 		return nil, fmt.Errorf("failed to register client: %w", err)
 	}
 
@@ -223,7 +225,7 @@ func (l *Listener) acceptV1Connection(id uuid.UUID) (net.Conn, error) {
 // V2 streams use V1 format for compatibility with existing protocol parsing.
 func (l *Listener) bindStream(stream net.Conn, id uuid.UUID) error {
 	req := make([]byte, 18)
-	req[0] = 1 // versionV1 - V2 streams use V1 format for compatibility
+	req[0] = proto.VersionV1() // V2 streams use V1 format for compatibility
 	req[1] = proto.CmdBind()
 	copy(req[2:], id[:])
 
@@ -310,7 +312,6 @@ func WithEventHandler(eventName string, handler func(event Event)) (ListenerOpti
 // The pool is only used when V2 protocol is successfully negotiated.
 func WithPoolConfig(config *pool.Config) ListenerOption {
 	return func(l *Listener) {
-		l.poolConfig = config
 		l.pool = pool.New(config)
 	}
 }
@@ -338,7 +339,5 @@ func WithDisableV2() ListenerOption {
 func WithEnableV2() ListenerOption {
 	return func(l *Listener) {
 		l.useV2 = true
-		// Remove the disable fallback option if it was set
-		l.disableV1 = false
 	}
 }
