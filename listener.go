@@ -90,7 +90,13 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 	// If V2 succeeded, initialize pool
 	if l.client.IsV2() && l.pool != nil {
 		// Add initial connection to pool (control stream is managed by client)
-		muxConn := pool.NewMuxConn(l.client.Session(), nil)
+		session := l.client.Session()
+		if session == nil {
+			l.cancel()
+			return nil, fmt.Errorf("V2 client has no yamux session")
+		}
+
+		muxConn := pool.NewMuxConn(session, nil)
 		if err := l.pool.AddConnection(muxConn); err != nil {
 			return nil, fmt.Errorf("failed to add connection to pool: %w", err)
 		}
@@ -120,7 +126,13 @@ func (l *Listener) createPoolConnection(ctx context.Context) (*pool.MuxConn, err
 		return nil, fmt.Errorf("server does not support V2")
 	}
 
-	return pool.NewMuxConn(client.Session(), nil), nil
+	session := client.Session()
+	if session == nil {
+		_ = client.Close()
+		return nil, fmt.Errorf("V2 client has no yamux session")
+	}
+
+	return pool.NewMuxConn(session, nil), nil
 }
 
 // Accept waits for and accepts a connection request from the client.

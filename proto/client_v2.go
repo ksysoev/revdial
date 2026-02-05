@@ -285,6 +285,9 @@ func (c *ClientV2) IsV2() bool {
 
 // Session returns the yamux session if using V2.
 func (c *ClientV2) Session() *yamux.Session {
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+
 	return c.session
 }
 
