@@ -2,6 +2,7 @@ package proto
 
 const (
 	versionV1 byte = 1
+	versionV2 byte = 2
 )
 
 const (
@@ -16,6 +17,8 @@ const (
 	cmdBind        byte = 3
 	cmdPing        byte = 4
 	cmdCustomEvent byte = 5
+	cmdMuxInit     byte = 10
+	cmdMuxReady    byte = 11
 )
 
 const (
