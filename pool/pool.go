@@ -84,16 +84,16 @@ func (c *Config) Validate() error {
 // Pool manages a collection of multiplexed connections.
 // It provides connection selection, auto-scaling, and metrics.
 type Pool struct {
-	config      *Config
-	connections []*MuxConn
-	metrics     *Metrics
 	selector    Selector
+	ctx         context.Context
+	config      *Config
+	metrics     *Metrics
 	scaler      *AutoScaler
 	onNewConn   func(context.Context) (*MuxConn, error)
-	mu          sync.RWMutex
-	ctx         context.Context
 	cancel      context.CancelFunc
+	connections []*MuxConn
 	wg          sync.WaitGroup
+	mu          sync.RWMutex
 }
 
 // New creates a new connection pool with the given configuration.
@@ -164,21 +164,23 @@ func (p *Pool) RemoveConnection(conn *MuxConn) error {
 	defer p.mu.Unlock()
 
 	for i, c := range p.connections {
-		if c == conn {
-			// Close the connection
-			if err := c.Close(); err != nil {
-				slog.Error("failed to close connection during removal", slog.Any("error", err))
-			}
-
-			// Remove from slice
-			p.connections = append(p.connections[:i], p.connections[i+1:]...)
-			p.metrics.SetConnectionCount(len(p.connections))
-
-			slog.Info("removed connection from pool",
-				slog.Int("total_connections", len(p.connections)))
-
-			return nil
+		if c != conn {
+			continue
 		}
+
+		// Close the connection
+		if err := c.Close(); err != nil {
+			slog.Error("failed to close connection during removal", slog.Any("error", err))
+		}
+
+		// Remove from slice
+		p.connections = append(p.connections[:i], p.connections[i+1:]...)
+		p.metrics.SetConnectionCount(len(p.connections))
+
+		slog.Info("removed connection from pool",
+			slog.Int("total_connections", len(p.connections)))
+
+		return nil
 	}
 
 	return fmt.Errorf("connection not found in pool")
@@ -280,6 +282,8 @@ func (p *Pool) evaluateScaling() {
 		} else {
 			p.scaler.RecordScale()
 		}
+	case ScaleNone:
+		// No action needed
 	}
 
 	// Reset latency measurements for next window

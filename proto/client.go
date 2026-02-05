@@ -24,14 +24,15 @@ const (
 )
 
 type Client struct {
-	conn     io.ReadWriteCloser
-	cancel   context.CancelFunc
-	cmds     chan Command
-	token    []byte
-	wg       sync.WaitGroup
-	authMode byte
-	mu       sync.Mutex
-	state    clientState
+	conn      io.ReadWriteCloser
+	cancel    context.CancelFunc
+	cmds      chan Command
+	token     []byte
+	wg        sync.WaitGroup
+	authMode  byte
+	mu        sync.Mutex
+	state     clientState
+	disableV2 bool // When true, forces V1-only mode in ClientV2
 }
 
 type ClientOption func(*Client)

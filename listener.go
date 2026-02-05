@@ -27,15 +27,16 @@ type dialer interface {
 type Listener struct {
 	ctx           context.Context
 	addr          net.Addr
+	dialer        dialer
 	cancel        context.CancelFunc
 	client        *proto.ClientV2
-	dialer        dialer
 	eventHandlers map[proto.CommandType]EventHandler
-	clientOpts    []proto.ClientOption
 	pool          *pool.Pool
 	poolConfig    *pool.Config
 	muxConfig     *mux.Config
+	clientOpts    []proto.ClientOption
 	useV2         bool
+	disableV1     bool
 }
 
 type ListenerOption func(*Listener)
@@ -55,7 +56,7 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 		addr:          addr,
 		dialer:        &net.Dialer{},
 		eventHandlers: make(map[proto.CommandType]EventHandler),
-		useV2:         true, // Try V2 by default
+		useV2:         false, // V2 disabled by default for backward compatibility
 	}
 
 	for _, opt := range opts {
@@ -63,6 +64,11 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 	}
 
 	l.ctx, l.cancel = context.WithCancel(ctx)
+
+	// If V2 is disabled, force V1 mode
+	if !l.useV2 {
+		l.clientOpts = append(l.clientOpts, proto.WithDisableV2Fallback())
+	}
 
 	conn, err := l.dialer.DialContext(l.ctx, "tcp", l.addr.String())
 	if err != nil {
@@ -317,6 +323,16 @@ func WithMuxConfig(config *mux.Config) ListenerOption {
 func WithDisableV2() ListenerOption {
 	return func(l *Listener) {
 		l.useV2 = false
-		l.clientOpts = append(l.clientOpts, proto.WithDisableV2Fallback())
+	}
+}
+
+// WithEnableV2 enables V2 protocol with multiplexing support.
+// It returns a ListenerOption that configures the listener to use V2 with fallback to V1.
+// When enabled, the listener will attempt V2 protocol first and fallback to V1 if unsupported.
+func WithEnableV2() ListenerOption {
+	return func(l *Listener) {
+		l.useV2 = true
+		// Remove the disable fallback option if it was set
+		l.disableV1 = false
 	}
 }

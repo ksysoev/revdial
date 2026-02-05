@@ -95,16 +95,23 @@ func (s *ServerV2) processV2AfterAuth() error {
 	negotiatedStreamWindow := min(clientStreamWindow, s.muxConfig.StreamWindowSize)
 	negotiatedConnWindow := min(clientConnWindow, s.muxConfig.ConnectionWindowSize)
 
-	// Send MuxReady response
-	respBuf := make([]byte, 14)
-	respBuf[0] = versionV2
+	// Send MuxReady response (using V1 format for compatibility)
+	respBuf := make([]byte, 2)
+	respBuf[0] = versionV1
 	respBuf[1] = cmdMuxReady
-	binary.BigEndian.PutUint32(respBuf[2:6], negotiatedMaxStreams)
-	binary.BigEndian.PutUint32(respBuf[6:10], negotiatedStreamWindow)
-	binary.BigEndian.PutUint32(respBuf[10:14], negotiatedConnWindow)
 
 	if _, err := s.conn.Write(respBuf); err != nil {
 		return fmt.Errorf("failed to write mux ready: %w", err)
+	}
+
+	// Send negotiated configuration (12 bytes)
+	configResp := make([]byte, 12)
+	binary.BigEndian.PutUint32(configResp[0:4], negotiatedMaxStreams)
+	binary.BigEndian.PutUint32(configResp[4:8], negotiatedStreamWindow)
+	binary.BigEndian.PutUint32(configResp[8:12], negotiatedConnWindow)
+
+	if _, err := s.conn.Write(configResp); err != nil {
+		return fmt.Errorf("failed to write mux config: %w", err)
 	}
 
 	// Upgrade connection to yamux session (server mode)
@@ -149,8 +156,8 @@ func (s *ServerV2) processV2AfterAuth() error {
 	s.state = StateRegistered
 	s.mu.Unlock()
 
-	// Send success response
-	if _, err := controlStream.Write([]byte{versionV2, resSuccess}); err != nil {
+	// Send success response (using V1 format for compatibility)
+	if _, err := controlStream.Write([]byte{versionV1, resSuccess}); err != nil {
 		return fmt.Errorf("failed to write register response: %w", err)
 	}
 
@@ -186,6 +193,17 @@ func (s *ServerV2) AcceptStream() (net.Conn, error) {
 	return stream, nil
 }
 
+// SendConnectCommand sends a connect command in V2 or V1 mode.
+// For V2, it uses the control stream. For V1, it falls back to the base Server implementation.
+func (s *ServerV2) SendConnectCommand(id uuid.UUID) error {
+	if s.isV2 {
+		return s.SendConnectCommandV2(id)
+	}
+
+	// V1 fallback
+	return s.Server.SendConnectCommand(id)
+}
+
 // SendConnectCommandV2 sends a connect command over the control stream in V2 mode.
 // It behaves the same as V1 but uses the control stream.
 func (s *ServerV2) SendConnectCommandV2(id uuid.UUID) error {
@@ -210,6 +228,13 @@ func (s *ServerV2) SendConnectCommandV2(id uuid.UUID) error {
 	}
 
 	return nil
+}
+
+// SendCustomEvent sends a custom event in V2 or V1 mode.
+// For V2, it uses the control stream. For V1, it falls back to the base Server implementation.
+func (s *ServerV2) SendCustomEvent(eventName string, data any) error {
+	// Both V1 and V2 use the same logic since s.conn points to the control stream in V2
+	return s.Server.SendCustomEvent(eventName, data)
 }
 
 // WithMuxConfig sets the multiplexing configuration for V2 connections.

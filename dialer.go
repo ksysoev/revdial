@@ -297,7 +297,8 @@ func (d *Dialer) handleV2Stream(ctx context.Context, stream net.Conn) {
 		return
 	}
 
-	if buf[0] != proto.VersionV2() {
+	// V2 streams use V1 format for compatibility
+	if buf[0] != 1 { // versionV1
 		slog.Error("unexpected version in stream", slog.Int("version", int(buf[0])))
 		_ = stream.Close()
 		return
@@ -324,8 +325,8 @@ func (d *Dialer) handleV2Stream(ctx context.Context, stream net.Conn) {
 		return
 	}
 
-	// Send success response
-	if _, err := stream.Write([]byte{proto.VersionV2(), proto.ResSuccess()}); err != nil {
+	// Send success response (using V1 format for compatibility)
+	if _, err := stream.Write([]byte{1, proto.ResSuccess()}); err != nil { // versionV1
 		slog.Error("failed to write response", slog.Any("error", err))
 		_ = stream.Close()
 		return

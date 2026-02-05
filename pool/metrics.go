@@ -51,6 +51,7 @@ func (m *Metrics) ConnectionCount() int {
 
 // SetConnectionCount atomically sets the connection count.
 func (m *Metrics) SetConnectionCount(count int) {
+	//nolint:gosec // Connection count will never exceed int32 max
 	m.connectionCount.Store(int32(count))
 }
 
@@ -103,11 +104,9 @@ func (m *Metrics) ResetLatency() {
 
 // ConnMetrics holds per-connection metrics.
 type ConnMetrics struct {
-	activeStreams atomic.Int32
-	totalStreams  atomic.Int64
-	bytesSent     atomic.Uint64
-	bytesReceived atomic.Uint64
 	createdAt     time.Time
+	totalStreams  atomic.Int64
+	activeStreams atomic.Int32
 }
 
 // NewConnMetrics creates and returns a new ConnMetrics instance.

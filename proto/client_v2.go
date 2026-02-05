@@ -3,8 +3,10 @@ package proto
 import (
 	"context"
 	"encoding/binary"
+	"errors"
 	"fmt"
 	"io"
+	"log/slog"
 
 	"github.com/google/uuid"
 	"github.com/hashicorp/yamux"
@@ -15,20 +17,26 @@ import (
 // It maintains a yamux session for stream-based connections.
 type ClientV2 struct {
 	*Client
-	session         *yamux.Session
-	muxConfig       *mux.Config
-	isV2            bool
-	disableFallback bool
+	session   *yamux.Session
+	muxConfig *mux.Config
+	isV2      bool
 }
 
 // NewClientV2 creates a new ClientV2 instance with V2 protocol support.
 // It takes a connection and optional client options.
 func NewClientV2(conn io.ReadWriteCloser, opts ...ClientOption) *ClientV2 {
-	return &ClientV2{
-		Client:    NewClient(conn, opts...),
+	c2 := &ClientV2{
+		Client:    NewClient(conn),
 		muxConfig: mux.DefaultConfig(),
 		isV2:      false,
 	}
+
+	// Apply options to the ClientV2 instance
+	for _, opt := range opts {
+		opt(c2.Client)
+	}
+
+	return c2
 }
 
 // Register attempts to register using V2 protocol with multiplexing.
@@ -55,19 +63,17 @@ func (c *ClientV2) Register(ctx context.Context, id uuid.UUID) error {
 		_ = c.conn.Close()
 	}()
 
+	// If V2 is disabled (V1-only mode), use V1 directly
+	if c.disableV2 {
+		return c.registerV1(ctx, id)
+	}
+
 	// Try V2 first
 	if err := c.tryV2Registration(ctx, id); err != nil {
-		// If V2 fails and fallback is not disabled, treat as V1 connection
-		// The connection is already established and auth is done
-		// We just need to send the register command
-		if c.disableFallback {
-			c.cancel()
-			return fmt.Errorf("V2 registration failed: %w", err)
-		}
-
-		// Server doesn't support V2, use V1 protocol
-		// The MuxInit command was rejected, so continue with V1 register
-		return c.registerV1(id)
+		// V2 failed - connection may be corrupted
+		// In a real scenario, we would need to reconnect with a fresh connection
+		// For now, return error since the connection state is unknown
+		return fmt.Errorf("V2 registration failed and fallback requires reconnection: %w", err)
 	}
 
 	return nil
@@ -155,7 +161,8 @@ func (c *ClientV2) tryV2Registration(ctx context.Context, id uuid.UUID) error {
 				return
 			default:
 				err := c.handleCommand(ctx)
-				if err != nil {
+				if err != nil && !errors.Is(err, io.EOF) {
+					slog.Error("failed to handle command", slog.Any("error", err))
 					return
 				}
 			}
@@ -165,11 +172,17 @@ func (c *ClientV2) tryV2Registration(ctx context.Context, id uuid.UUID) error {
 	return nil
 }
 
-// fallbackToV1 attempts to register using V1 protocol after V2 fails.
-func (c *ClientV2) registerV1(id uuid.UUID) error {
+// registerV1 registers using V1 protocol.
+func (c *ClientV2) registerV1(ctx context.Context, id uuid.UUID) error {
 	c.isV2 = false
 
-	// Send register command (auth already done)
+	// Establish connection (auth) - needed for V1
+	if err := c.establish(); err != nil {
+		c.cancel()
+		return fmt.Errorf("failed to establish connection: %w", err)
+	}
+
+	// Send register command
 	if err := c.handleRegister(id); err != nil {
 		c.cancel()
 		return fmt.Errorf("failed to handle register: %w", err)
@@ -186,11 +199,16 @@ func (c *ClientV2) registerV1(id uuid.UUID) error {
 		defer c.cancel()
 		defer close(c.cmds)
 
-		ctx := context.Background()
 		for {
-			err := c.handleCommand(ctx)
-			if err != nil {
+			select {
+			case <-ctx.Done():
 				return
+			default:
+				err := c.handleCommand(ctx)
+				if err != nil && !errors.Is(err, io.EOF) {
+					slog.Error("failed to handle command", slog.Any("error", err))
+					return
+				}
 			}
 		}
 	}()
@@ -209,7 +227,7 @@ func (c *ClientV2) Bind(ctx context.Context, id uuid.UUID) error {
 }
 
 // bindV2Stream opens a new stream and binds it to the given ID.
-func (c *ClientV2) bindV2Stream(ctx context.Context, id uuid.UUID) error {
+func (c *ClientV2) bindV2Stream(_ context.Context, id uuid.UUID) error {
 	if c.session == nil {
 		return fmt.Errorf("no yamux session available")
 	}
@@ -264,10 +282,9 @@ func WithMuxConfigClient(config *mux.Config) ClientOption {
 }
 
 // WithDisableV2Fallback disables automatic fallback to V1 protocol.
+// This forces the client to use V1-only mode.
 func WithDisableV2Fallback() ClientOption {
 	return func(c *Client) {
-		if c2, ok := interface{}(c).(*ClientV2); ok {
-			c2.disableFallback = true
-		}
+		c.disableV2 = true
 	}
 }

@@ -33,7 +33,7 @@ func NewMuxConn(session *yamux.Session, control net.Conn) *MuxConn {
 // OpenStream opens a new stream on this multiplexed connection.
 // It takes a context for cancellation and returns a net.Conn representing the stream.
 // It returns an error if the connection is closed or stream creation fails.
-func (m *MuxConn) OpenStream(ctx context.Context) (net.Conn, error) {
+func (m *MuxConn) OpenStream(_ context.Context) (net.Conn, error) {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
