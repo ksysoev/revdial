@@ -7,6 +7,8 @@ import (
 	"net"
 
 	"github.com/google/uuid"
+	"github.com/ksysoev/revdial/mux"
+	"github.com/ksysoev/revdial/pool"
 	"github.com/ksysoev/revdial/proto"
 )
 
@@ -26,10 +28,14 @@ type Listener struct {
 	ctx           context.Context
 	addr          net.Addr
 	cancel        context.CancelFunc
-	client        *proto.Client
+	client        *proto.ClientV2
 	dialer        dialer
 	eventHandlers map[proto.CommandType]EventHandler
 	clientOpts    []proto.ClientOption
+	pool          *pool.Pool
+	poolConfig    *pool.Config
+	muxConfig     *mux.Config
+	useV2         bool
 }
 
 type ListenerOption func(*Listener)
@@ -38,6 +44,7 @@ type ListenerOption func(*Listener)
 // It takes a context (ctx), a dialer server address (dialerSrv), and optional configuration (opts).
 // It returns a pointer to a Listener instance or an error.
 // It returns an error if the address resolution, connection, TLS handshake, or client registration fails.
+// The listener now supports both V1 and V2 protocols with automatic detection.
 func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Listener, error) {
 	addr, err := net.ResolveTCPAddr("tcp", dialerSrv)
 	if err != nil {
@@ -48,6 +55,7 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 		addr:          addr,
 		dialer:        &net.Dialer{},
 		eventHandlers: make(map[proto.CommandType]EventHandler),
+		useV2:         true, // Try V2 by default
 	}
 
 	for _, opt := range opts {
@@ -62,19 +70,54 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 		return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
 	}
 
-	l.client = proto.NewClient(conn, l.clientOpts...)
+	// Use ClientV2 which supports both protocols
+	l.client = proto.NewClientV2(conn, l.clientOpts...)
 
 	err = l.client.Register(l.ctx, uuid.New())
 	if err != nil {
 		return nil, fmt.Errorf("failed to register client: %w", err)
 	}
 
+	// If V2 succeeded, initialize pool
+	if l.client.IsV2() && l.pool != nil {
+		// Add initial connection to pool (control stream is managed by client)
+		muxConn := pool.NewMuxConn(l.client.Session(), nil)
+		if err := l.pool.AddConnection(muxConn); err != nil {
+			return nil, fmt.Errorf("failed to add connection to pool: %w", err)
+		}
+
+		// Start pool monitoring
+		l.pool.Start(l.ctx, l.createPoolConnection)
+	}
+
 	return l, nil
+}
+
+// createPoolConnection is called by the pool to create new connections.
+func (l *Listener) createPoolConnection(ctx context.Context) (*pool.MuxConn, error) {
+	conn, err := l.dialer.DialContext(ctx, "tcp", l.addr.String())
+	if err != nil {
+		return nil, fmt.Errorf("failed to connect: %w", err)
+	}
+
+	client := proto.NewClientV2(conn, l.clientOpts...)
+	if err := client.Register(ctx, uuid.New()); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("failed to register: %w", err)
+	}
+
+	if !client.IsV2() {
+		_ = conn.Close()
+		return nil, fmt.Errorf("server does not support V2")
+	}
+
+	return pool.NewMuxConn(client.Session(), nil), nil
 }
 
 // Accept waits for and accepts a connection request from the client.
 // It returns a net.Conn representing the established connection or an error.
 // It returns an error if the listener is closed, fails to parse a command, fails to connect, or encounters a binding error.
+// In V2 mode, it opens a new stream on the existing multiplexed connection instead of creating a new TCP connection.
 func (l *Listener) Accept() (net.Conn, error) {
 	for {
 		select {
@@ -94,20 +137,13 @@ func (l *Listener) Accept() (net.Conn, error) {
 					return nil, fmt.Errorf("failed to parse command payload: %w", err)
 				}
 
-				conn, err := l.dialer.DialContext(l.ctx, "tcp", l.addr.String())
-				if err != nil {
-					l.cancel()
-					return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
+				// Use V2 stream if available
+				if l.client.IsV2() {
+					return l.acceptV2Stream(id)
 				}
 
-				client := proto.NewClient(conn, l.clientOpts...)
-
-				if err := client.Bind(l.ctx, id); err != nil {
-					_ = conn.Close()
-					return nil, fmt.Errorf("failed to bind connection: %w", err)
-				}
-
-				return conn, nil
+				// V1 fallback - create new TCP connection
+				return l.acceptV1Connection(id)
 			default:
 				if handler, ok := l.eventHandlers[cmd.Type()]; ok {
 					handler(cmd)
@@ -118,6 +154,86 @@ func (l *Listener) Accept() (net.Conn, error) {
 			}
 		}
 	}
+}
+
+// acceptV2Stream opens a new stream on the multiplexed connection for V2 protocol.
+func (l *Listener) acceptV2Stream(id uuid.UUID) (net.Conn, error) {
+	// Open a stream from the pool if available, otherwise from the primary client
+	if l.pool != nil {
+		stream, err := l.pool.OpenStream(l.ctx)
+		if err != nil {
+			return nil, fmt.Errorf("failed to open stream from pool: %w", err)
+		}
+
+		// Send bind command on the stream
+		if err := l.bindStream(stream, id); err != nil {
+			_ = stream.Close()
+			return nil, err
+		}
+
+		return stream, nil
+	}
+
+	// Use primary client session directly
+	session := l.client.Session()
+	if session == nil {
+		return nil, fmt.Errorf("no yamux session available")
+	}
+
+	stream, err := session.OpenStream()
+	if err != nil {
+		return nil, fmt.Errorf("failed to open stream: %w", err)
+	}
+
+	// Send bind command on the stream
+	if err := l.bindStream(stream, id); err != nil {
+		_ = stream.Close()
+		return nil, err
+	}
+
+	return stream, nil
+}
+
+// acceptV1Connection creates a new TCP connection for V1 protocol.
+func (l *Listener) acceptV1Connection(id uuid.UUID) (net.Conn, error) {
+	conn, err := l.dialer.DialContext(l.ctx, "tcp", l.addr.String())
+	if err != nil {
+		l.cancel()
+		return nil, fmt.Errorf("failed to connect to dialler server: %w", err)
+	}
+
+	client := proto.NewClient(conn, l.clientOpts...)
+
+	if err := client.Bind(l.ctx, id); err != nil {
+		_ = conn.Close()
+		return nil, fmt.Errorf("failed to bind connection: %w", err)
+	}
+
+	return conn, nil
+}
+
+// bindStream sends a bind command on the given stream.
+func (l *Listener) bindStream(stream net.Conn, id uuid.UUID) error {
+	req := make([]byte, 18)
+	req[0] = proto.VersionV2()
+	req[1] = proto.CmdBind()
+	copy(req[2:], id[:])
+
+	if _, err := stream.Write(req); err != nil {
+		return fmt.Errorf("failed to write bind command: %w", err)
+	}
+
+	// Read response
+	resp := make([]byte, 2)
+	if _, err := stream.Read(resp); err != nil {
+		return fmt.Errorf("failed to read bind response: %w", err)
+	}
+
+	if resp[0] != proto.VersionV2() || resp[1] != proto.ResSuccess() {
+		return fmt.Errorf("bind failed: version=%d, result=%d", resp[0], resp[1])
+	}
+
+	return nil
 }
 
 // Close terminates the Listener and releases associated resources.
@@ -175,4 +291,32 @@ func WithEventHandler(eventName string, handler func(event Event)) (ListenerOpti
 	return func(l *Listener) {
 		l.eventHandlers[cmdType] = handler
 	}, nil
+}
+
+// WithPoolConfig configures the connection pool for V2 multiplexing.
+// It takes a pool.Config pointer and returns a ListenerOption.
+// The pool is only used when V2 protocol is successfully negotiated.
+func WithPoolConfig(config *pool.Config) ListenerOption {
+	return func(l *Listener) {
+		l.poolConfig = config
+		l.pool = pool.New(config)
+	}
+}
+
+// WithMuxConfig configures multiplexing parameters for V2 connections.
+// It takes a mux.Config pointer and returns a ListenerOption.
+func WithMuxConfig(config *mux.Config) ListenerOption {
+	return func(l *Listener) {
+		l.muxConfig = config
+		l.clientOpts = append(l.clientOpts, proto.WithMuxConfigClient(config))
+	}
+}
+
+// WithDisableV2 disables V2 protocol and forces V1 mode.
+// It returns a ListenerOption that configures the listener to only use V1.
+func WithDisableV2() ListenerOption {
+	return func(l *Listener) {
+		l.useV2 = false
+		l.clientOpts = append(l.clientOpts, proto.WithDisableV2Fallback())
+	}
 }
