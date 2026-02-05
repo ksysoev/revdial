@@ -114,10 +114,9 @@ func (d *Dialer) Stop() error {
 	}
 
 	d.cancel()
+	d.wg.Wait()
 
-	defer d.wg.Wait()
-
-	return d.listener.Close()
+	return nil
 }
 
 // DialContext establishes a new connection using the context for control and cancellation.
