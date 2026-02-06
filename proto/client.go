@@ -24,14 +24,15 @@ const (
 )
 
 type Client struct {
-	conn     io.ReadWriteCloser
-	cancel   context.CancelFunc
-	cmds     chan Command
-	token    []byte
-	wg       sync.WaitGroup
-	authMode byte
-	mu       sync.Mutex
-	state    clientState
+	conn      io.ReadWriteCloser
+	cancel    context.CancelFunc
+	cmds      chan Command
+	token     []byte
+	wg        sync.WaitGroup
+	authMode  byte
+	mu        sync.RWMutex
+	state     clientState
+	disableV2 bool // When true, forces V1-only mode in ClientV2
 }
 
 type ClientOption func(*Client)
@@ -42,7 +43,7 @@ type ClientOption func(*Client)
 func NewClient(conn io.ReadWriteCloser, opts ...ClientOption) *Client {
 	c := &Client{
 		conn:     conn,
-		cmds:     make(chan Command),
+		cmds:     make(chan Command, 10), // Buffered channel to prevent deadlocks
 		authMode: noAuth,
 	}
 
@@ -77,6 +78,7 @@ func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
 
 	go func() {
 		defer c.wg.Done()
+
 		<-ctx.Done()
 
 		_ = c.conn.Close()
@@ -138,6 +140,7 @@ func (c *Client) Bind(ctx context.Context, id uuid.UUID) error {
 
 	go func() {
 		defer c.wg.Done()
+
 		<-ctx.Done()
 
 		_ = c.conn.Close()

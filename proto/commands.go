@@ -18,7 +18,9 @@ type Command interface {
 }
 
 const (
-	ConnectCommandType CommandType = "connect"
+	ConnectCommandType  CommandType = "connect"
+	MuxInitCommandType  CommandType = "mux_init"
+	MuxReadyCommandType CommandType = "mux_ready"
 )
 
 type ConnectCommand struct {
@@ -99,9 +101,25 @@ func NewCommandType(name string) (CommandType, error) {
 	switch typeName {
 	case "":
 		return "", fmt.Errorf("event name cannot be empty")
-	case ConnectCommandType:
+	case ConnectCommandType, MuxInitCommandType, MuxReadyCommandType:
 		return "", fmt.Errorf("event name cannot contain reserved command names")
 	}
 
 	return typeName, nil
+}
+
+// MuxInitCommand represents a request to initialize a multiplexed connection.
+// It contains configuration parameters for the yamux session.
+type MuxInitCommand struct {
+	MaxStreams           uint32
+	StreamWindowSize     uint32
+	ConnectionWindowSize uint32
+}
+
+// MuxReadyCommand represents the server's response to MuxInit with negotiated parameters.
+// The server may adjust the requested parameters based on its own limits.
+type MuxReadyCommand struct {
+	MaxStreams           uint32
+	StreamWindowSize     uint32
+	ConnectionWindowSize uint32
 }

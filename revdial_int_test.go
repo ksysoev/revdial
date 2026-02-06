@@ -84,6 +84,7 @@ func TestListenerDialer(t *testing.T) {
 	defer func() { _ = listener.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
 
@@ -135,6 +136,7 @@ func TestListenerDialer_WithUserPassAuth_Success(t *testing.T) {
 	defer func() { _ = listener.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
 
@@ -200,6 +202,7 @@ func TestListenerDialer_WithTLS_Success(t *testing.T) {
 	defer func() { _ = listener.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
 
@@ -315,6 +318,7 @@ func TestListenerDialer_WithTLSAndAuth_Success(t *testing.T) {
 	defer func() { _ = listener.Close() }()
 
 	done := make(chan struct{})
+
 	go func() {
 		defer close(done)
 
@@ -392,5 +396,73 @@ func TestListenerDialer_WithEventHandler(t *testing.T) {
 	case <-recievedEvent:
 	case <-time.After(100 * time.Millisecond):
 		t.Error("expected event to be received")
+	}
+}
+
+func TestListenerDialer_V2Protocol(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	// Create a new dialer - it uses ServerV2 which supports both V1 and V2
+	dialer := NewDialer(":0")
+
+	require.NoError(t, dialer.Start(ctx), "Failed to start dialer")
+
+	defer func() {
+		err := dialer.Stop()
+		require.NoError(t, err, "Failed to stop dialer")
+	}()
+
+	addr := dialer.listener.Addr().String()
+
+	// Create a listener with V2 enabled
+	listener, err := Listen(ctx, addr, WithEnableV2())
+	require.NoError(t, err, "Failed to create listener with V2")
+
+	defer func() { _ = listener.Close() }()
+
+	// Verify V2 is being used
+	assert.True(t, listener.client.IsV2(), "Expected V2 protocol to be used")
+	assert.NotNil(t, listener.client.Session(), "Expected yamux session to be created")
+
+	// Give time for registration to complete
+	time.Sleep(100 * time.Millisecond)
+
+	// Test that connections work with V2 (streams instead of TCP)
+	done := make(chan struct{})
+
+	go func() {
+		defer close(done)
+
+		conn, err := listener.Accept()
+		if err != nil {
+			t.Errorf("failed to accept connection: %v", err)
+		} else {
+			// Write some data to verify stream works
+			_, err := conn.Write([]byte("hello from V2"))
+			if err != nil {
+				t.Errorf("failed to write to connection: %v", err)
+			}
+
+			_ = conn.Close()
+		}
+	}()
+
+	// Dial a connection
+	conn, err := dialer.DialContext(ctx)
+	require.NoError(t, err, "Failed to dial")
+
+	defer func() { _ = conn.Close() }()
+
+	// Read the data to verify stream works
+	buf := make([]byte, 100)
+	n, err := conn.Read(buf)
+	require.NoError(t, err, "Failed to read from connection")
+	assert.Equal(t, "hello from V2", string(buf[:n]), "Expected data to match")
+
+	select {
+	case <-done:
+	case <-time.After(100 * time.Millisecond):
+		t.Error("expected connection to be accepted")
 	}
 }
