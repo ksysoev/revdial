@@ -50,6 +50,11 @@ func (s *AutoScaler) Evaluate(metrics *Metrics) ScaleAction {
 
 	connCount := metrics.ConnectionCount()
 	if connCount == 0 {
+		// If we have no connections but should have at least MinConnections, scale up
+		if s.config.MinConnections > 0 {
+			return ScaleUp
+		}
+
 		return ScaleNone
 	}
 

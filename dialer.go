@@ -302,7 +302,7 @@ func (d *Dialer) handleV2Stream(ctx context.Context, stream net.Conn) {
 	}
 
 	// V2 streams use V1 format for compatibility
-	if buf[0] != 1 { // versionV1
+	if buf[0] != proto.VersionV1() { // versionV1
 		slog.Error("unexpected version in stream", slog.Int("version", int(buf[0])))
 
 		_ = stream.Close()

@@ -93,11 +93,16 @@ func Listen(ctx context.Context, dialerSrv string, opts ...ListenerOption) (*Lis
 		session := l.client.Session()
 		if session == nil {
 			l.cancel()
+			_ = l.client.Close()
+
 			return nil, fmt.Errorf("V2 client has no yamux session")
 		}
 
 		muxConn := pool.NewMuxConn(session, nil)
 		if err := l.pool.AddConnection(muxConn); err != nil {
+			l.cancel()
+			_ = l.client.Close()
+
 			return nil, fmt.Errorf("failed to add connection to pool: %w", err)
 		}
 
@@ -251,7 +256,7 @@ func (l *Listener) bindStream(stream net.Conn, id uuid.UUID) error {
 		return fmt.Errorf("failed to read bind response: %w", err)
 	}
 
-	if resp[0] != 1 || resp[1] != proto.ResSuccess() {
+	if resp[0] != proto.VersionV1() || resp[1] != proto.ResSuccess() {
 		return fmt.Errorf("bind failed: version=%d, result=%d", resp[0], resp[1])
 	}
 

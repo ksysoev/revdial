@@ -53,9 +53,12 @@ func (c *ClientV2) Register(ctx context.Context, id uuid.UUID) error {
 	}
 
 	c.state = processing
-	c.mu.Unlock()
 
-	ctx, c.cancel = context.WithCancel(ctx)
+	var cancel context.CancelFunc
+
+	ctx, cancel = context.WithCancel(ctx)
+	c.cancel = cancel
+	c.mu.Unlock()
 
 	c.wg.Add(1)
 
@@ -241,12 +244,16 @@ func (c *ClientV2) Bind(ctx context.Context, id uuid.UUID) error {
 
 // bindV2Stream opens a new stream and binds it to the given ID.
 func (c *ClientV2) bindV2Stream(_ context.Context, id uuid.UUID) error {
-	if c.session == nil {
+	c.mu.RLock()
+	session := c.session
+	c.mu.RUnlock()
+
+	if session == nil {
 		return fmt.Errorf("no yamux session available")
 	}
 
 	// Open a new stream
-	stream, err := c.session.OpenStream()
+	stream, err := session.OpenStream()
 	if err != nil {
 		return fmt.Errorf("failed to open stream: %w", err)
 	}

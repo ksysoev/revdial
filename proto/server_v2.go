@@ -124,8 +124,10 @@ func (s *ServerV2) processV2AfterAuth() error {
 		return fmt.Errorf("failed to create yamux session: %w", err)
 	}
 
+	s.mu.Lock()
 	s.session = session
 	s.isV2 = true
+	s.mu.Unlock()
 
 	// Accept control stream (first stream from client)
 	controlStream, err := session.AcceptStream()
@@ -172,23 +174,34 @@ func (s *ServerV2) processV2AfterAuth() error {
 
 // IsV2 returns true if this connection is using V2 protocol with multiplexing.
 func (s *ServerV2) IsV2() bool {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	return s.isV2
 }
 
 // Session returns the yamux session if this is a V2 connection.
 // It returns nil for V1 connections.
 func (s *ServerV2) Session() *yamux.Session {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
 	return s.session
 }
 
 // AcceptStream accepts a new stream from the yamux session.
 // It returns an error if this is not a V2 connection.
 func (s *ServerV2) AcceptStream() (net.Conn, error) {
-	if !s.isV2 || s.session == nil {
+	s.mu.RLock()
+	isV2 := s.isV2
+	session := s.session
+	s.mu.RUnlock()
+
+	if !isV2 || session == nil {
 		return nil, fmt.Errorf("not a V2 connection")
 	}
 
-	stream, err := s.session.AcceptStream()
+	stream, err := session.AcceptStream()
 	if err != nil {
 		return nil, fmt.Errorf("failed to accept stream: %w", err)
 	}
@@ -199,7 +212,11 @@ func (s *ServerV2) AcceptStream() (net.Conn, error) {
 // SendConnectCommand sends a connect command in V2 or V1 mode.
 // For V2, it uses the control stream. For V1, it falls back to the base Server implementation.
 func (s *ServerV2) SendConnectCommand(id uuid.UUID) error {
-	if s.isV2 {
+	s.mu.RLock()
+	isV2 := s.isV2
+	s.mu.RUnlock()
+
+	if isV2 {
 		return s.SendConnectCommandV2(id)
 	}
 
