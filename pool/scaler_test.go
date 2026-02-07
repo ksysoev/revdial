@@ -34,6 +34,7 @@ func TestAutoScaler_Evaluate_Cooldown(t *testing.T) {
 
 	// Wait for cooldown and try again
 	time.Sleep(1100 * time.Millisecond)
+
 	action3 := scaler.Evaluate(metrics)
 	// This time it should evaluate properly (may be ScaleNone, but not due to cooldown)
 	_ = action3

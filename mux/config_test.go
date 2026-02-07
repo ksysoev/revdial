@@ -20,9 +20,9 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestConfig_Validate(t *testing.T) {
 	tests := []struct {
-		name      string
 		config    *Config
 		checkFunc func(*testing.T, *Config)
+		name      string
 	}{
 		{
 			name: "valid config - no changes",
@@ -34,6 +34,7 @@ func TestConfig_Validate(t *testing.T) {
 				KeepAliveTimeout:     120 * time.Second,
 			},
 			checkFunc: func(t *testing.T, c *Config) {
+				t.Helper()
 				assert.Equal(t, uint32(2048), c.MaxStreams)
 				assert.Equal(t, uint32(512*1024), c.StreamWindowSize)
 				assert.Equal(t, uint32(2*1024*1024), c.ConnectionWindowSize)
@@ -51,6 +52,7 @@ func TestConfig_Validate(t *testing.T) {
 				KeepAliveTimeout:     60 * time.Second,
 			},
 			checkFunc: func(t *testing.T, c *Config) {
+				t.Helper()
 				assert.Equal(t, uint32(1024), c.MaxStreams)
 			},
 		},
@@ -64,6 +66,7 @@ func TestConfig_Validate(t *testing.T) {
 				KeepAliveTimeout:     60 * time.Second,
 			},
 			checkFunc: func(t *testing.T, c *Config) {
+				t.Helper()
 				assert.Equal(t, uint32(256*1024), c.StreamWindowSize)
 			},
 		},
@@ -77,6 +80,7 @@ func TestConfig_Validate(t *testing.T) {
 				KeepAliveTimeout:     60 * time.Second,
 			},
 			checkFunc: func(t *testing.T, c *Config) {
+				t.Helper()
 				assert.Equal(t, uint32(1024*1024), c.ConnectionWindowSize)
 			},
 		},
@@ -90,6 +94,7 @@ func TestConfig_Validate(t *testing.T) {
 				KeepAliveTimeout:     60 * time.Second,
 			},
 			checkFunc: func(t *testing.T, c *Config) {
+				t.Helper()
 				assert.Equal(t, 30*time.Second, c.KeepAliveInterval)
 			},
 		},
@@ -103,6 +108,7 @@ func TestConfig_Validate(t *testing.T) {
 				KeepAliveTimeout:     0,
 			},
 			checkFunc: func(t *testing.T, c *Config) {
+				t.Helper()
 				assert.Equal(t, 60*time.Second, c.KeepAliveTimeout)
 			},
 		},
@@ -116,6 +122,7 @@ func TestConfig_Validate(t *testing.T) {
 				KeepAliveTimeout:     0,
 			},
 			checkFunc: func(t *testing.T, c *Config) {
+				t.Helper()
 				assert.Equal(t, uint32(1024), c.MaxStreams)
 				assert.Equal(t, uint32(256*1024), c.StreamWindowSize)
 				assert.Equal(t, uint32(1024*1024), c.ConnectionWindowSize)

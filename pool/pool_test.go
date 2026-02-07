@@ -25,10 +25,10 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestConfig_Validate(t *testing.T) {
 	tests := []struct {
-		name        string
 		config      *Config
-		expectError bool
 		checkFunc   func(*testing.T, *Config)
+		name        string
+		expectError bool
 	}{
 		{
 			name: "valid config",
@@ -52,6 +52,7 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectError: false,
 			checkFunc: func(t *testing.T, c *Config) {
+				t.Helper()
 				assert.Equal(t, 1, c.MinConnections)
 			},
 		},
@@ -63,6 +64,7 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectError: false,
 			checkFunc: func(t *testing.T, c *Config) {
+				t.Helper()
 				assert.Equal(t, 5, c.MaxConnections)
 			},
 		},
@@ -86,6 +88,7 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectError: false,
 			checkFunc: func(t *testing.T, c *Config) {
+				t.Helper()
 				assert.Equal(t, 800, c.ScaleUpThreshold)
 				assert.Equal(t, 200, c.ScaleDownThreshold)
 			},
@@ -102,6 +105,7 @@ func TestConfig_Validate(t *testing.T) {
 			},
 			expectError: false,
 			checkFunc: func(t *testing.T, c *Config) {
+				t.Helper()
 				assert.Equal(t, 30*time.Second, c.ScaleCooldown)
 				assert.Equal(t, 10*time.Second, c.MonitorInterval)
 			},
@@ -115,6 +119,7 @@ func TestConfig_Validate(t *testing.T) {
 				assert.Error(t, err)
 			} else {
 				assert.NoError(t, err)
+
 				if tt.checkFunc != nil {
 					tt.checkFunc(t, tt.config)
 				}
@@ -225,10 +230,12 @@ func TestPool_OpenStream(t *testing.T) {
 
 	serverSession, err := yamux.Server(serverPipe, yamuxCfg)
 	require.NoError(t, err)
+
 	defer serverSession.Close()
 
 	clientSession, err := yamux.Client(clientPipe, yamuxCfg)
 	require.NoError(t, err)
+
 	defer clientSession.Close()
 
 	muxConn := NewMuxConn(clientSession, clientPipe)
@@ -237,6 +244,7 @@ func TestPool_OpenStream(t *testing.T) {
 
 	// Accept stream on server side
 	acceptDone := make(chan net.Conn, 1)
+
 	go func() {
 		stream, err := serverSession.AcceptStream()
 		if err == nil {
@@ -258,6 +266,7 @@ func TestPool_OpenStream(t *testing.T) {
 	if stream != nil {
 		stream.Close()
 	}
+
 	if serverStream := <-acceptDone; serverStream != nil {
 		serverStream.Close()
 	}
@@ -289,6 +298,7 @@ func TestPool_Connections(t *testing.T) {
 
 	// Verify it's a copy (modifying the returned slice shouldn't affect pool)
 	conns[0] = nil
+
 	assert.NotNil(t, pool.connections[0])
 }
 
@@ -378,7 +388,6 @@ func TestPoolTrackedStream_Close(t *testing.T) {
 }
 
 func TestPool_ScaleUp(t *testing.T) {
-
 	config := DefaultConfig()
 	config.MaxConnections = 3
 	pool := New(config)

@@ -56,7 +56,6 @@ func TestMuxConn_OpenStream(t *testing.T) {
 	acceptDone := make(chan error, 1)
 
 	go func() {
-
 		_, err := serverSession.AcceptStream()
 		acceptDone <- err
 	}()
@@ -111,10 +110,12 @@ func TestMuxConn_AcceptStream(t *testing.T) {
 
 	serverSession, err := yamux.Server(serverPipe, yamuxCfg)
 	require.NoError(t, err)
+
 	defer serverSession.Close()
 
 	clientSession, err := yamux.Client(clientPipe, yamuxCfg)
 	require.NoError(t, err)
+
 	defer clientSession.Close()
 
 	// Create MuxConn with server session (servers accept streams)
@@ -124,7 +125,6 @@ func TestMuxConn_AcceptStream(t *testing.T) {
 	openDone := make(chan net.Conn, 1)
 
 	go func() {
-
 		stream, err := clientSession.OpenStream()
 		if err == nil {
 			openDone <- stream
@@ -183,10 +183,12 @@ func TestMuxConn_NumStreams(t *testing.T) {
 
 	serverSession, err := yamux.Server(serverPipe, yamuxCfg)
 	require.NoError(t, err)
+
 	defer serverSession.Close()
 
 	clientSession, err := yamux.Client(clientPipe, yamuxCfg)
 	require.NoError(t, err)
+
 	defer clientSession.Close()
 
 	// Create MuxConn with client session
@@ -207,6 +209,7 @@ func TestMuxConn_NumStreams(t *testing.T) {
 			if err != nil {
 				return
 			}
+
 			acceptedStreams = append(acceptedStreams, stream)
 		}
 	}()

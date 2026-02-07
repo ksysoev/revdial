@@ -130,6 +130,7 @@ func TestConnMetrics_Age(t *testing.T) {
 
 	// Wait a bit and check age increased
 	time.Sleep(10 * time.Millisecond)
+
 	age2 := cm.Age()
 	assert.True(t, age2 > age1)
 }
