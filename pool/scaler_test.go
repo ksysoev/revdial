@@ -21,24 +21,22 @@ func TestAutoScaler_Evaluate_Cooldown(t *testing.T) {
 	config.ScaleCooldown = 1 * time.Second
 	scaler := NewAutoScaler(config)
 
+	// Ensure first evaluation is not affected by cooldown
+	scaler.lastScaleTime = time.Now().Add(-2 * time.Second)
+
 	metrics := NewMetrics()
 	metrics.SetConnectionCount(2)
 	metrics.IncrementActiveStreams() // Add some streams
 
-	// First evaluation should work
-	action := scaler.Evaluate(metrics)
+	// First evaluation should work (result may vary depending on metrics and config)
+	_ = scaler.Evaluate(metrics)
+
+	// Simulate a recent scale event to trigger cooldown
+	scaler.lastScaleTime = time.Now()
 
 	// Immediately evaluate again - should return ScaleNone due to cooldown
-	action2 := scaler.Evaluate(metrics)
-	assert.Equal(t, ScaleNone, action2)
-
-	// Wait for cooldown and try again
-	time.Sleep(1100 * time.Millisecond)
-
-	action3 := scaler.Evaluate(metrics)
-	// This time it should evaluate properly (may be ScaleNone, but not due to cooldown)
-	_ = action3
-	_ = action // Satisfy linter
+	action := scaler.Evaluate(metrics)
+	assert.Equal(t, ScaleNone, action)
 }
 
 func TestAutoScaler_Evaluate_NoConnections_ScaleUp(t *testing.T) {

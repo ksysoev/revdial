@@ -156,6 +156,8 @@ func TestConfig_ToYamux(t *testing.T) {
 	yamuxCfg := config.ToYamux()
 
 	assert.NotNil(t, yamuxCfg)
+	// Note: MaxStreams and ConnectionWindowSize are not mapped to yamux.Config
+	// They are used by the pool layer for connection management
 	assert.Equal(t, config.StreamWindowSize, yamuxCfg.MaxStreamWindowSize)
 	assert.Equal(t, config.KeepAliveInterval, yamuxCfg.KeepAliveInterval)
 	assert.Equal(t, config.KeepAliveTimeout, yamuxCfg.ConnectionWriteTimeout)
@@ -166,6 +168,8 @@ func TestConfig_ToYamux_WithDefaults(t *testing.T) {
 	yamuxCfg := config.ToYamux()
 
 	assert.NotNil(t, yamuxCfg)
+	// Note: MaxStreams and ConnectionWindowSize are not mapped to yamux.Config
+	// They are used by the pool layer for connection management
 	assert.Equal(t, uint32(256*1024), yamuxCfg.MaxStreamWindowSize)
 	assert.Equal(t, 30*time.Second, yamuxCfg.KeepAliveInterval)
 	assert.Equal(t, 60*time.Second, yamuxCfg.ConnectionWriteTimeout)

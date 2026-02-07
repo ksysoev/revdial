@@ -73,7 +73,7 @@ func createMockMuxConn(t *testing.T) *MuxConn {
 	t.Helper()
 
 	// Create a pipe for testing
-	client, server := net.Pipe()
+	_, server := net.Pipe()
 
 	// Create yamux session
 	yamuxCfg := yamux.DefaultConfig()
@@ -84,11 +84,11 @@ func createMockMuxConn(t *testing.T) *MuxConn {
 		t.Fatalf("failed to create yamux session: %v", err)
 	}
 
-	// Clean up the client side
+	// Clean up when test is done
 	t.Cleanup(func() {
-		client.Close()
+		server.Close()
 		session.Close()
 	})
 
-	return NewMuxConn(session, client)
+	return NewMuxConn(session, server)
 }

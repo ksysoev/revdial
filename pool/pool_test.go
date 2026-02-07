@@ -256,19 +256,23 @@ func TestPool_OpenStream(t *testing.T) {
 
 	ctx := context.Background()
 	stream, err := pool.OpenStream(ctx)
-	assert.NoError(t, err)
-	assert.NotNil(t, stream)
+	require.NoError(t, err)
+	require.NotNil(t, stream)
 
 	// Verify metrics
 	assert.Equal(t, int64(1), pool.metrics.ActiveStreams())
 
 	// Clean up
-	if stream != nil {
-		stream.Close()
-	}
+	stream.Close()
 
-	if serverStream := <-acceptDone; serverStream != nil {
-		serverStream.Close()
+	// Wait for server accept with timeout
+	select {
+	case serverStream := <-acceptDone:
+		if serverStream != nil {
+			serverStream.Close()
+		}
+	case <-time.After(1 * time.Second):
+		t.Fatal("timeout waiting for server to accept stream")
 	}
 }
 
@@ -521,7 +525,7 @@ func createTestMuxConn(t *testing.T) *MuxConn {
 	t.Helper()
 
 	// Create a pipe for testing
-	client, server := net.Pipe()
+	_, server := net.Pipe()
 
 	// Create yamux session
 	yamuxCfg := yamux.DefaultConfig()
@@ -534,11 +538,11 @@ func createTestMuxConn(t *testing.T) *MuxConn {
 
 	// Clean up when test is done
 	t.Cleanup(func() {
-		client.Close()
+		server.Close()
 		session.Close()
 	})
 
-	return NewMuxConn(session, client)
+	return NewMuxConn(session, server)
 }
 
 func TestPool_ScaleUp_FactoryError(t *testing.T) {
