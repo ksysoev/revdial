@@ -109,8 +109,11 @@ func (c *Client) Register(ctx context.Context, id uuid.UUID) error {
 				return
 			default:
 				err := c.handleCommand(ctx)
-				if err != nil && !errors.Is(err, io.EOF) {
-					slog.Error("failed to handle command", slog.Any("error", err))
+				if err != nil {
+					if !errors.Is(err, io.EOF) {
+						slog.Error("failed to handle command", slog.Any("error", err))
+					}
+
 					return
 				}
 			}
@@ -193,7 +196,7 @@ func (c *Client) Close() error {
 func (c *Client) establish() error {
 	methods := []byte{c.authMode}
 	req := make([]byte, 0, 1+len(methods))
-	req = append(req, byte(len(methods)))
+	req = append(req, byte(len(methods))) //nolint:gosec // len(methods) is always 1 here
 	req = append(req, methods...)
 
 	resp, err := sendRequest(c.conn, req)
@@ -397,8 +400,8 @@ func WithUserPass(username, password string) (ClientOption, error) {
 		return nil, fmt.Errorf("username or password is too long")
 	}
 
-	ulen := byte(len(username))
-	plen := byte(len(password))
+	ulen := byte(len(username)) //nolint:gosec // length is validated to be <= 255 above
+	plen := byte(len(password)) //nolint:gosec // length is validated to be <= 255 above
 
 	token := make([]byte, 0, 2+ulen+plen)
 	token = append(token, ulen)

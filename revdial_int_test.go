@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/ksysoev/revdial/pool"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -396,6 +397,331 @@ func TestListenerDialer_WithEventHandler(t *testing.T) {
 	case <-recievedEvent:
 	case <-time.After(100 * time.Millisecond):
 		t.Error("expected event to be received")
+	}
+}
+
+// TestListener_DetectsServerClose verifies that when the server (Dialer) stops,
+// the client-side Listener detects the disconnect and Accept returns ErrListenerClosed.
+func TestListener_DetectsServerClose(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	dialer := NewDialer(":0")
+
+	require.NoError(t, dialer.Start(ctx), "failed to start dialer")
+
+	addr := dialer.listener.Addr().String()
+
+	listener, err := Listen(ctx, addr)
+	require.NoError(t, err, "failed to create listener")
+
+	defer func() { _ = listener.Close() }()
+
+	// Accept must return with ErrListenerClosed once the server shuts down.
+	// Start Accept before stopping the server so it is already blocking.
+	acceptErr := make(chan error, 1)
+
+	go func() {
+		_, err := listener.Accept()
+		acceptErr <- err
+	}()
+
+	// Give the goroutine a moment to enter Accept, then stop the server.
+	time.Sleep(50 * time.Millisecond)
+
+	// Stop closes the TCP listener which tears down all accepted control connections.
+	// We call it in a goroutine because Stop() waits for internal goroutines that
+	// are themselves unblocked only once the client-side detects the disconnect.
+	go func() { _ = dialer.Stop() }()
+
+	select {
+	case err := <-acceptErr:
+		assert.ErrorIs(t, err, ErrListenerClosed, "expected ErrListenerClosed after server close")
+	case <-ctx.Done():
+		t.Error("Accept did not return after server closed the connection")
+	}
+}
+
+// TestListener_DetectsServerClose_V2 is the same scenario with V2 protocol enabled.
+func TestListener_DetectsServerClose_V2(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	dialer := NewDialer(":0")
+
+	require.NoError(t, dialer.Start(ctx), "failed to start dialer")
+
+	addr := dialer.listener.Addr().String()
+
+	listener, err := Listen(ctx, addr, WithEnableV2())
+	require.NoError(t, err, "failed to create listener with V2")
+
+	defer func() { _ = listener.Close() }()
+
+	// Verify V2 negotiated successfully before we close the server.
+	assert.True(t, listener.client.IsV2(), "expected V2 protocol")
+
+	acceptErr := make(chan error, 1)
+
+	go func() {
+		_, err := listener.Accept()
+		acceptErr <- err
+	}()
+
+	// Give the goroutine a moment to enter Accept, then stop the server.
+	time.Sleep(50 * time.Millisecond)
+
+	go func() { _ = dialer.Stop() }()
+
+	select {
+	case err := <-acceptErr:
+		assert.ErrorIs(t, err, ErrListenerClosed, "expected ErrListenerClosed after server close (V2)")
+	case <-ctx.Done():
+		t.Error("Accept did not return after server closed the connection (V2)")
+	}
+}
+
+// TestListener_DetectsServerClose_WithTLS verifies that when the server (Dialer) stops
+// on a TLS-secured connection, the V1 client-side Listener detects the disconnect
+// and Accept returns ErrListenerClosed.
+func TestListener_DetectsServerClose_WithTLS(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cert, certPool := generateTestCert(t)
+
+	serverTLSConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    certPool,
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	clientTLSConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      certPool,
+		ServerName:   "example.com",
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	dialer := NewDialer(":0", WithDialerTLSConfig(serverTLSConfig))
+
+	require.NoError(t, dialer.Start(ctx), "failed to start dialer")
+
+	addr := dialer.listener.Addr().String()
+
+	listener, err := Listen(ctx, addr, WithListenerTLSConfig(clientTLSConfig))
+	require.NoError(t, err, "failed to create listener with TLS")
+
+	defer func() { _ = listener.Close() }()
+
+	acceptErr := make(chan error, 1)
+
+	go func() {
+		_, err := listener.Accept()
+		acceptErr <- err
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	go func() { _ = dialer.Stop() }()
+
+	select {
+	case err := <-acceptErr:
+		assert.ErrorIs(t, err, ErrListenerClosed, "expected ErrListenerClosed after server close (TLS)")
+	case <-ctx.Done():
+		t.Error("Accept did not return after server closed the connection (TLS)")
+	}
+}
+
+// TestListener_DetectsServerClose_WithTLSAndV2 verifies that when the server (Dialer) stops
+// on a TLS-secured V2 connection, the client-side Listener detects the disconnect
+// and Accept returns ErrListenerClosed.
+func TestListener_DetectsServerClose_WithTLSAndV2(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	cert, certPool := generateTestCert(t)
+
+	serverTLSConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		ClientAuth:   tls.RequireAndVerifyClientCert,
+		ClientCAs:    certPool,
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	clientTLSConfig := &tls.Config{
+		Certificates: []tls.Certificate{cert},
+		RootCAs:      certPool,
+		ServerName:   "example.com",
+		MinVersion:   tls.VersionTLS12,
+	}
+
+	dialer := NewDialer(":0", WithDialerTLSConfig(serverTLSConfig))
+
+	require.NoError(t, dialer.Start(ctx), "failed to start dialer")
+
+	addr := dialer.listener.Addr().String()
+
+	listener, err := Listen(ctx, addr, WithListenerTLSConfig(clientTLSConfig), WithEnableV2())
+	require.NoError(t, err, "failed to create listener with TLS and V2")
+
+	defer func() { _ = listener.Close() }()
+
+	assert.True(t, listener.client.IsV2(), "expected V2 protocol")
+
+	acceptErr := make(chan error, 1)
+
+	go func() {
+		_, err := listener.Accept()
+		acceptErr <- err
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	go func() { _ = dialer.Stop() }()
+
+	select {
+	case err := <-acceptErr:
+		assert.ErrorIs(t, err, ErrListenerClosed, "expected ErrListenerClosed after server close (TLS + V2)")
+	case <-ctx.Done():
+		t.Error("Accept did not return after server closed the connection (TLS + V2)")
+	}
+}
+
+// TestListener_DetectsServerClose_WithAuth verifies that when the server (Dialer) stops
+// on a password-authenticated V1 connection, the client-side Listener detects the disconnect
+// and Accept returns ErrListenerClosed.
+func TestListener_DetectsServerClose_WithAuth(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	dialer := NewDialer(":0", WithUserPassAuth(func(user, pass string) bool {
+		return user == "user" && pass == "pass"
+	}))
+
+	require.NoError(t, dialer.Start(ctx), "failed to start dialer")
+
+	addr := dialer.listener.Addr().String()
+
+	authOpt, err := WithUserPass("user", "pass")
+	require.NoError(t, err, "failed to create auth option")
+
+	listener, err := Listen(ctx, addr, authOpt)
+	require.NoError(t, err, "failed to create listener with auth")
+
+	defer func() { _ = listener.Close() }()
+
+	acceptErr := make(chan error, 1)
+
+	go func() {
+		_, err := listener.Accept()
+		acceptErr <- err
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	go func() { _ = dialer.Stop() }()
+
+	select {
+	case err := <-acceptErr:
+		assert.ErrorIs(t, err, ErrListenerClosed, "expected ErrListenerClosed after server close (auth)")
+	case <-ctx.Done():
+		t.Error("Accept did not return after server closed the connection (auth)")
+	}
+}
+
+// TestListener_DetectsServerClose_MultipleListeners verifies that when the server (Dialer) stops,
+// all connected client-side Listeners detect the disconnect and Accept returns ErrListenerClosed.
+func TestListener_DetectsServerClose_MultipleListeners(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	dialer := NewDialer(":0")
+
+	require.NoError(t, dialer.Start(ctx), "failed to start dialer")
+
+	addr := dialer.listener.Addr().String()
+
+	const numListeners = 3
+
+	listeners := make([]*Listener, numListeners)
+
+	for i := range numListeners {
+		l, err := Listen(ctx, addr)
+		require.NoError(t, err, "failed to create listener %d", i)
+
+		listeners[i] = l
+	}
+
+	defer func() {
+		for _, l := range listeners {
+			_ = l.Close()
+		}
+	}()
+
+	acceptErrs := make([]chan error, numListeners)
+
+	for i := range numListeners {
+		ch := make(chan error, 1)
+		acceptErrs[i] = ch
+		l := listeners[i]
+
+		go func() {
+			_, err := l.Accept()
+			ch <- err
+		}()
+	}
+
+	time.Sleep(50 * time.Millisecond)
+
+	go func() { _ = dialer.Stop() }()
+
+	for i, ch := range acceptErrs {
+		select {
+		case err := <-ch:
+			assert.ErrorIs(t, err, ErrListenerClosed, "listener %d: expected ErrListenerClosed after server close", i)
+		case <-ctx.Done():
+			t.Errorf("listener %d: Accept did not return after server closed the connection", i)
+		}
+	}
+}
+
+// TestListener_DetectsServerClose_WithPool verifies that when the server (Dialer) stops,
+// a V2 client using a connection pool detects the disconnect and Accept returns ErrListenerClosed.
+func TestListener_DetectsServerClose_WithPool(t *testing.T) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	dialer := NewDialer(":0")
+
+	require.NoError(t, dialer.Start(ctx), "failed to start dialer")
+
+	addr := dialer.listener.Addr().String()
+
+	listener, err := Listen(ctx, addr, WithEnableV2(), WithPoolConfig(pool.DefaultConfig()))
+	require.NoError(t, err, "failed to create listener with V2 and pool")
+
+	defer func() { _ = listener.Close() }()
+
+	assert.True(t, listener.client.IsV2(), "expected V2 protocol")
+
+	acceptErr := make(chan error, 1)
+
+	go func() {
+		_, err := listener.Accept()
+		acceptErr <- err
+	}()
+
+	time.Sleep(50 * time.Millisecond)
+
+	go func() { _ = dialer.Stop() }()
+
+	select {
+	case err := <-acceptErr:
+		assert.ErrorIs(t, err, ErrListenerClosed, "expected ErrListenerClosed after server close (V2 + pool)")
+	case <-ctx.Done():
+		t.Error("Accept did not return after server closed the connection (V2 + pool)")
 	}
 }
 
