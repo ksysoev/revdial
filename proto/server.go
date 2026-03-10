@@ -219,7 +219,7 @@ func (s *Server) handleInit() error {
 		return fmt.Errorf("failed to read auth methods: %w", err)
 	}
 
-	nmethods := int8(msg) //nolint:gosec // msg is a byte; negative value means zero methods which is handled below
+	nmethods := int(msg) // msg is a byte [0–255]; always non-negative
 	methods := make([]byte, nmethods)
 
 	if _, err := s.conn.Read(methods); err != nil {

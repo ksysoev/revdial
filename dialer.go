@@ -282,12 +282,19 @@ func (d *Dialer) handleV2RegisteredConnection(_ context.Context, s *proto.Server
 		defer d.wg.Done()
 		defer d.cm.RemoveConnection(s.ID())
 
+		// done is closed when this goroutine exits, allowing the closer goroutine
+		// below to terminate early and avoid a goroutine leak per disconnected session.
+		done := make(chan struct{})
+		defer close(done)
+
 		// Close the session when the dialer context is cancelled so that
 		// AcceptStream unblocks and this goroutine can exit cleanly.
 		go func() {
-			<-d.ctx.Done()
-
-			_ = s.Close()
+			select {
+			case <-d.ctx.Done():
+				_ = s.Close()
+			case <-done:
+			}
 		}()
 
 		for {
