@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
 	"net"
 	"sync"
 
@@ -222,7 +223,7 @@ func (s *Server) handleInit() error {
 	nmethods := int(msg) // msg is a byte [0–255]; always non-negative
 	methods := make([]byte, nmethods)
 
-	if _, err := s.conn.Read(methods); err != nil {
+	if _, err := io.ReadFull(s.conn, methods); err != nil {
 		return fmt.Errorf("failed to read auth methods: %w", err)
 	}
 

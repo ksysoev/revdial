@@ -427,16 +427,22 @@ func TestListener_DetectsServerClose(t *testing.T) {
 	}()
 
 	// Give the goroutine a moment to enter Accept, then stop the server.
+	// A ready-channel before Accept() would still race (the goroutine can be
+	// preempted between close(ready) and the blocking Accept call), so a short
+	// sleep is the most honest approximation; the 5 s test timeout is the safety net.
 	time.Sleep(50 * time.Millisecond)
 
 	// Stop closes the TCP listener which tears down all accepted control connections.
 	// We call it in a goroutine because Stop() waits for internal goroutines that
 	// are themselves unblocked only once the client-side detects the disconnect.
-	go func() { _ = dialer.Stop() }()
+	stopErr := make(chan error, 1)
+
+	go func() { stopErr <- dialer.Stop() }()
 
 	select {
 	case err := <-acceptErr:
 		assert.ErrorIs(t, err, ErrListenerClosed, "expected ErrListenerClosed after server close")
+		require.NoError(t, <-stopErr, "dialer.Stop() failed")
 	case <-ctx.Done():
 		t.Error("Accept did not return after server closed the connection")
 	}
@@ -471,11 +477,16 @@ func TestListener_DetectsServerClose_V2(t *testing.T) {
 	// Give the goroutine a moment to enter Accept, then stop the server.
 	time.Sleep(50 * time.Millisecond)
 
-	go func() { _ = dialer.Stop() }()
+	// Stop() blocks until internal goroutines drain, which only unblock after the
+	// client detects the disconnect. Run it in a goroutine and capture the error.
+	stopErr := make(chan error, 1)
+
+	go func() { stopErr <- dialer.Stop() }()
 
 	select {
 	case err := <-acceptErr:
 		assert.ErrorIs(t, err, ErrListenerClosed, "expected ErrListenerClosed after server close (V2)")
+		require.NoError(t, <-stopErr, "dialer.Stop() failed")
 	case <-ctx.Done():
 		t.Error("Accept did not return after server closed the connection (V2)")
 	}
@@ -522,13 +533,22 @@ func TestListener_DetectsServerClose_WithTLS(t *testing.T) {
 		acceptErr <- err
 	}()
 
+	// Give the goroutine a moment to enter Accept, then stop the server.
+	// A ready-channel before Accept() would still race (the goroutine can be
+	// preempted between close(ready) and the blocking Accept call), so a short
+	// sleep is the most honest approximation; the 5 s test timeout is the safety net.
 	time.Sleep(50 * time.Millisecond)
 
-	go func() { _ = dialer.Stop() }()
+	// Stop() blocks until internal goroutines drain, which only unblock after the
+	// client detects the disconnect. Run it in a goroutine and capture the error.
+	stopErr := make(chan error, 1)
+
+	go func() { stopErr <- dialer.Stop() }()
 
 	select {
 	case err := <-acceptErr:
 		assert.ErrorIs(t, err, ErrListenerClosed, "expected ErrListenerClosed after server close (TLS)")
+		require.NoError(t, <-stopErr, "dialer.Stop() failed")
 	case <-ctx.Done():
 		t.Error("Accept did not return after server closed the connection (TLS)")
 	}
@@ -577,13 +597,22 @@ func TestListener_DetectsServerClose_WithTLSAndV2(t *testing.T) {
 		acceptErr <- err
 	}()
 
+	// Give the goroutine a moment to enter Accept, then stop the server.
+	// A ready-channel before Accept() would still race (the goroutine can be
+	// preempted between close(ready) and the blocking Accept call), so a short
+	// sleep is the most honest approximation; the 5 s test timeout is the safety net.
 	time.Sleep(50 * time.Millisecond)
 
-	go func() { _ = dialer.Stop() }()
+	// Stop() blocks until internal goroutines drain, which only unblock after the
+	// client detects the disconnect. Run it in a goroutine and capture the error.
+	stopErr := make(chan error, 1)
+
+	go func() { stopErr <- dialer.Stop() }()
 
 	select {
 	case err := <-acceptErr:
 		assert.ErrorIs(t, err, ErrListenerClosed, "expected ErrListenerClosed after server close (TLS + V2)")
+		require.NoError(t, <-stopErr, "dialer.Stop() failed")
 	case <-ctx.Done():
 		t.Error("Accept did not return after server closed the connection (TLS + V2)")
 	}
@@ -619,13 +648,22 @@ func TestListener_DetectsServerClose_WithAuth(t *testing.T) {
 		acceptErr <- err
 	}()
 
+	// Give the goroutine a moment to enter Accept, then stop the server.
+	// A ready-channel before Accept() would still race (the goroutine can be
+	// preempted between close(ready) and the blocking Accept call), so a short
+	// sleep is the most honest approximation; the 5 s test timeout is the safety net.
 	time.Sleep(50 * time.Millisecond)
 
-	go func() { _ = dialer.Stop() }()
+	// Stop() blocks until internal goroutines drain, which only unblock after the
+	// client detects the disconnect. Run it in a goroutine and capture the error.
+	stopErr := make(chan error, 1)
+
+	go func() { stopErr <- dialer.Stop() }()
 
 	select {
 	case err := <-acceptErr:
 		assert.ErrorIs(t, err, ErrListenerClosed, "expected ErrListenerClosed after server close (auth)")
+		require.NoError(t, <-stopErr, "dialer.Stop() failed")
 	case <-ctx.Done():
 		t.Error("Accept did not return after server closed the connection (auth)")
 	}
@@ -673,9 +711,17 @@ func TestListener_DetectsServerClose_MultipleListeners(t *testing.T) {
 		}()
 	}
 
+	// Give the goroutines a moment to enter Accept, then stop the server.
+	// A ready-channel before Accept() would still race (the goroutine can be
+	// preempted between close(ready) and the blocking Accept call), so a short
+	// sleep is the most honest approximation; the 5 s test timeout is the safety net.
 	time.Sleep(50 * time.Millisecond)
 
-	go func() { _ = dialer.Stop() }()
+	// Stop() blocks until internal goroutines drain, which only unblock after all
+	// clients detect the disconnect. Run it in a goroutine and capture the error.
+	stopErr := make(chan error, 1)
+
+	go func() { stopErr <- dialer.Stop() }()
 
 	for i, ch := range acceptErrs {
 		select {
@@ -685,6 +731,8 @@ func TestListener_DetectsServerClose_MultipleListeners(t *testing.T) {
 			t.Errorf("listener %d: Accept did not return after server closed the connection", i)
 		}
 	}
+
+	require.NoError(t, <-stopErr, "dialer.Stop() failed")
 }
 
 // TestListener_DetectsServerClose_WithPool verifies that when the server (Dialer) stops,
@@ -713,13 +761,22 @@ func TestListener_DetectsServerClose_WithPool(t *testing.T) {
 		acceptErr <- err
 	}()
 
+	// Give the goroutine a moment to enter Accept, then stop the server.
+	// A ready-channel before Accept() would still race (the goroutine can be
+	// preempted between close(ready) and the blocking Accept call), so a short
+	// sleep is the most honest approximation; the 5 s test timeout is the safety net.
 	time.Sleep(50 * time.Millisecond)
 
-	go func() { _ = dialer.Stop() }()
+	// Stop() blocks until internal goroutines drain, which only unblock after the
+	// client detects the disconnect. Run it in a goroutine and capture the error.
+	stopErr := make(chan error, 1)
+
+	go func() { stopErr <- dialer.Stop() }()
 
 	select {
 	case err := <-acceptErr:
 		assert.ErrorIs(t, err, ErrListenerClosed, "expected ErrListenerClosed after server close (V2 + pool)")
+		require.NoError(t, <-stopErr, "dialer.Stop() failed")
 	case <-ctx.Done():
 		t.Error("Accept did not return after server closed the connection (V2 + pool)")
 	}

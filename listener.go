@@ -311,7 +311,10 @@ func WithListenerTLSConfig(config *tls.Config) ListenerOption {
 	}
 }
 
-// WithListenerKeepAlive sets the TCP keepalive interval for the control connection.
+// WithListenerKeepAlive sets the TCP keepalive interval on the listener's shared dialer.
+// Because the dialer is reused for all outbound TCP connections made by this listener
+// (initial control connection, V1 per-accept dials, and V2 pool dials), the keepalive
+// setting applies to every connection, not only the control connection.
 // The interval maps directly to net.Dialer.KeepAlive semantics:
 //   - interval > 0: enable TCP keep-alives with the given period
 //   - interval == 0: use Go's default keep-alive period (15s)
