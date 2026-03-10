@@ -97,6 +97,11 @@ func TestListenerDialer(t *testing.T) {
 		}
 	}()
 
+	// Wait for the server-side handleConnection goroutine to call AddConnection.
+	// Listen() returns once the client handshake completes, but the dialer adds
+	// the connection to its manager asynchronously; dialing too early races.
+	time.Sleep(50 * time.Millisecond)
+
 	conn, err := dialer.DialContext(t.Context())
 	if err != nil {
 		t.Fatalf("failed to dial: %v", err)
@@ -149,6 +154,11 @@ func TestListenerDialer_WithUserPassAuth_Success(t *testing.T) {
 			_ = conn.Close()
 		}
 	}()
+
+	// Wait for the server-side handleConnection goroutine to call AddConnection.
+	// Listen() returns once the client handshake completes, but the dialer adds
+	// the connection to its manager asynchronously; dialing too early races.
+	time.Sleep(50 * time.Millisecond)
 
 	conn, err := dialer.DialContext(ctx)
 	if err != nil {
@@ -215,6 +225,11 @@ func TestListenerDialer_WithTLS_Success(t *testing.T) {
 			_ = conn.Close()
 		}
 	}()
+
+	// Wait for the server-side handleConnection goroutine to call AddConnection.
+	// Listen() returns once the client handshake completes, but the dialer adds
+	// the connection to its manager asynchronously; dialing too early races.
+	time.Sleep(50 * time.Millisecond)
 
 	conn, err := dialer.DialContext(ctx)
 	require.NoError(t, err, "Failed to dial")
@@ -332,6 +347,11 @@ func TestListenerDialer_WithTLSAndAuth_Success(t *testing.T) {
 		}
 	}()
 
+	// Wait for the server-side handleConnection goroutine to call AddConnection.
+	// Listen() returns once the client handshake completes, but the dialer adds
+	// the connection to its manager asynchronously; dialing too early races.
+	time.Sleep(50 * time.Millisecond)
+
 	conn, err := dialer.DialContext(ctx)
 	require.NoError(t, err, "Failed to dial")
 
@@ -389,6 +409,11 @@ func TestListenerDialer_WithEventHandler(t *testing.T) {
 	}()
 
 	defer func() { _ = listener.Close() }()
+
+	// Wait for the server-side handleConnection goroutine to call AddConnection.
+	// Listen() returns once the client handshake completes, but the dialer adds
+	// the connection to its manager asynchronously; sending too early races.
+	time.Sleep(50 * time.Millisecond)
 
 	err = dialer.SendEvent(ctx, expectedEventName, expectedEventData)
 	assert.NoError(t, err, "Failed to send event")
