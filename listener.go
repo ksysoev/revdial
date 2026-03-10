@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/ksysoev/revdial/mux"
@@ -306,6 +307,25 @@ func WithListenerTLSConfig(config *tls.Config) ListenerOption {
 		l.dialer = &tls.Dialer{
 			NetDialer: d,
 			Config:    config.Clone(),
+		}
+	}
+}
+
+// WithListenerKeepAlive sets the TCP keepalive interval for the control connection.
+// A value of 0 disables explicit keepalive (OS default applies).
+// Recommended value: 30 * time.Second.
+// This option is composable with WithListenerTLSConfig regardless of application order.
+func WithListenerKeepAlive(interval time.Duration) ListenerOption {
+	return func(l *Listener) {
+		switch d := l.dialer.(type) {
+		case *net.Dialer:
+			d.KeepAlive = interval
+		case *tls.Dialer:
+			if d.NetDialer == nil {
+				d.NetDialer = &net.Dialer{}
+			}
+
+			d.NetDialer.KeepAlive = interval
 		}
 	}
 }

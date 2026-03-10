@@ -2,6 +2,7 @@ package revdial
 
 import (
 	"context"
+	"crypto/tls"
 	"net"
 	"testing"
 	"time"
@@ -137,4 +138,62 @@ func TestListener_Accept_Closed(t *testing.T) {
 	case <-time.After(100 * time.Millisecond):
 		t.Error("expected connection to be accepted")
 	}
+}
+
+func TestWithListenerKeepAlive_NetDialer(t *testing.T) {
+	l := &Listener{
+		dialer: &net.Dialer{},
+	}
+
+	WithListenerKeepAlive(30 * time.Second)(l)
+
+	d, ok := l.dialer.(*net.Dialer)
+	assert.True(t, ok, "expected dialer to remain *net.Dialer")
+	assert.Equal(t, 30*time.Second, d.KeepAlive)
+}
+
+func TestWithListenerKeepAlive_TLSDialer(t *testing.T) {
+	l := &Listener{
+		dialer: &tls.Dialer{
+			NetDialer: &net.Dialer{},
+			Config:    &tls.Config{},
+		},
+	}
+
+	WithListenerKeepAlive(30 * time.Second)(l)
+
+	d, ok := l.dialer.(*tls.Dialer)
+	assert.True(t, ok, "expected dialer to remain *tls.Dialer")
+	assert.NotNil(t, d.NetDialer)
+	assert.Equal(t, 30*time.Second, d.NetDialer.KeepAlive)
+}
+
+func TestWithListenerKeepAlive_TLSDialerNilNetDialer(t *testing.T) {
+	l := &Listener{
+		dialer: &tls.Dialer{
+			Config: &tls.Config{},
+		},
+	}
+
+	WithListenerKeepAlive(30 * time.Second)(l)
+
+	d, ok := l.dialer.(*tls.Dialer)
+	assert.True(t, ok, "expected dialer to remain *tls.Dialer")
+	assert.NotNil(t, d.NetDialer)
+	assert.Equal(t, 30*time.Second, d.NetDialer.KeepAlive)
+}
+
+func TestWithListenerKeepAlive_KeepAliveBeforeTLS(t *testing.T) {
+	l := &Listener{
+		dialer: &net.Dialer{},
+	}
+
+	// Apply keepalive first, then TLS — keepalive must be preserved in tls.Dialer.NetDialer
+	WithListenerKeepAlive(30 * time.Second)(l)
+	WithListenerTLSConfig(&tls.Config{})(l)
+
+	d, ok := l.dialer.(*tls.Dialer)
+	assert.True(t, ok, "expected dialer to be *tls.Dialer after WithListenerTLSConfig")
+	assert.NotNil(t, d.NetDialer)
+	assert.Equal(t, 30*time.Second, d.NetDialer.KeepAlive)
 }
