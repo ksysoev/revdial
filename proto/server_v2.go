@@ -262,9 +262,9 @@ func (s *ServerV2) SendCustomEvent(eventName string, data any) error {
 // delegates to the base Server.Close to close the underlying TCP connection.
 // For V1 connections it behaves identically to Server.Close.
 func (s *ServerV2) Close() error {
-	s.mu.Lock()
+	s.mu.RLock()
 	session := s.session
-	s.mu.Unlock()
+	s.mu.RUnlock()
 
 	if session != nil {
 		// Closing the session tears down yamux's internal goroutines and

@@ -99,8 +99,10 @@ func TestListenerDialer(t *testing.T) {
 
 	// Wait for the server-side handleConnection goroutine to call AddConnection.
 	// Listen() returns once the client handshake completes, but the dialer adds
-	// the connection to its manager asynchronously; dialing too early races.
-	time.Sleep(50 * time.Millisecond)
+	// the connection to its manager asynchronously; polling guarantees readiness.
+	require.Eventually(t, func() bool { return dialer.cm.GetConn() != nil },
+		2*time.Second, 10*time.Millisecond,
+		"connection should become available in the manager")
 
 	conn, err := dialer.DialContext(t.Context())
 	if err != nil {
@@ -157,8 +159,10 @@ func TestListenerDialer_WithUserPassAuth_Success(t *testing.T) {
 
 	// Wait for the server-side handleConnection goroutine to call AddConnection.
 	// Listen() returns once the client handshake completes, but the dialer adds
-	// the connection to its manager asynchronously; dialing too early races.
-	time.Sleep(50 * time.Millisecond)
+	// the connection to its manager asynchronously; polling guarantees readiness.
+	require.Eventually(t, func() bool { return dialer.cm.GetConn() != nil },
+		2*time.Second, 10*time.Millisecond,
+		"connection should become available in the manager")
 
 	conn, err := dialer.DialContext(ctx)
 	if err != nil {
@@ -228,8 +232,10 @@ func TestListenerDialer_WithTLS_Success(t *testing.T) {
 
 	// Wait for the server-side handleConnection goroutine to call AddConnection.
 	// Listen() returns once the client handshake completes, but the dialer adds
-	// the connection to its manager asynchronously; dialing too early races.
-	time.Sleep(50 * time.Millisecond)
+	// the connection to its manager asynchronously; polling guarantees readiness.
+	require.Eventually(t, func() bool { return dialer.cm.GetConn() != nil },
+		2*time.Second, 10*time.Millisecond,
+		"connection should become available in the manager")
 
 	conn, err := dialer.DialContext(ctx)
 	require.NoError(t, err, "Failed to dial")
@@ -349,8 +355,10 @@ func TestListenerDialer_WithTLSAndAuth_Success(t *testing.T) {
 
 	// Wait for the server-side handleConnection goroutine to call AddConnection.
 	// Listen() returns once the client handshake completes, but the dialer adds
-	// the connection to its manager asynchronously; dialing too early races.
-	time.Sleep(50 * time.Millisecond)
+	// the connection to its manager asynchronously; polling guarantees readiness.
+	require.Eventually(t, func() bool { return dialer.cm.GetConn() != nil },
+		2*time.Second, 10*time.Millisecond,
+		"connection should become available in the manager")
 
 	conn, err := dialer.DialContext(ctx)
 	require.NoError(t, err, "Failed to dial")
@@ -412,8 +420,10 @@ func TestListenerDialer_WithEventHandler(t *testing.T) {
 
 	// Wait for the server-side handleConnection goroutine to call AddConnection.
 	// Listen() returns once the client handshake completes, but the dialer adds
-	// the connection to its manager asynchronously; sending too early races.
-	time.Sleep(50 * time.Millisecond)
+	// the connection to its manager asynchronously; polling guarantees readiness.
+	require.Eventually(t, func() bool { return dialer.cm.GetConn() != nil },
+		2*time.Second, 10*time.Millisecond,
+		"connection should become available in the manager")
 
 	err = dialer.SendEvent(ctx, expectedEventName, expectedEventData)
 	assert.NoError(t, err, "Failed to send event")
@@ -450,12 +460,6 @@ func TestListener_DetectsServerClose(t *testing.T) {
 		_, err := listener.Accept()
 		acceptErr <- err
 	}()
-
-	// Give the goroutine a moment to enter Accept, then stop the server.
-	// A ready-channel before Accept() would still race (the goroutine can be
-	// preempted between close(ready) and the blocking Accept call), so a short
-	// sleep is the most honest approximation; the 5 s test timeout is the safety net.
-	time.Sleep(50 * time.Millisecond)
 
 	// Stop closes the TCP listener which tears down all accepted control connections.
 	// We call it in a goroutine because Stop() waits for internal goroutines that
@@ -498,9 +502,6 @@ func TestListener_DetectsServerClose_V2(t *testing.T) {
 		_, err := listener.Accept()
 		acceptErr <- err
 	}()
-
-	// Give the goroutine a moment to enter Accept, then stop the server.
-	time.Sleep(50 * time.Millisecond)
 
 	// Stop() blocks until internal goroutines drain, which only unblock after the
 	// client detects the disconnect. Run it in a goroutine and capture the error.
@@ -557,12 +558,6 @@ func TestListener_DetectsServerClose_WithTLS(t *testing.T) {
 		_, err := listener.Accept()
 		acceptErr <- err
 	}()
-
-	// Give the goroutine a moment to enter Accept, then stop the server.
-	// A ready-channel before Accept() would still race (the goroutine can be
-	// preempted between close(ready) and the blocking Accept call), so a short
-	// sleep is the most honest approximation; the 5 s test timeout is the safety net.
-	time.Sleep(50 * time.Millisecond)
 
 	// Stop() blocks until internal goroutines drain, which only unblock after the
 	// client detects the disconnect. Run it in a goroutine and capture the error.
@@ -622,12 +617,6 @@ func TestListener_DetectsServerClose_WithTLSAndV2(t *testing.T) {
 		acceptErr <- err
 	}()
 
-	// Give the goroutine a moment to enter Accept, then stop the server.
-	// A ready-channel before Accept() would still race (the goroutine can be
-	// preempted between close(ready) and the blocking Accept call), so a short
-	// sleep is the most honest approximation; the 5 s test timeout is the safety net.
-	time.Sleep(50 * time.Millisecond)
-
 	// Stop() blocks until internal goroutines drain, which only unblock after the
 	// client detects the disconnect. Run it in a goroutine and capture the error.
 	stopErr := make(chan error, 1)
@@ -672,12 +661,6 @@ func TestListener_DetectsServerClose_WithAuth(t *testing.T) {
 		_, err := listener.Accept()
 		acceptErr <- err
 	}()
-
-	// Give the goroutine a moment to enter Accept, then stop the server.
-	// A ready-channel before Accept() would still race (the goroutine can be
-	// preempted between close(ready) and the blocking Accept call), so a short
-	// sleep is the most honest approximation; the 5 s test timeout is the safety net.
-	time.Sleep(50 * time.Millisecond)
 
 	// Stop() blocks until internal goroutines drain, which only unblock after the
 	// client detects the disconnect. Run it in a goroutine and capture the error.
@@ -736,12 +719,6 @@ func TestListener_DetectsServerClose_MultipleListeners(t *testing.T) {
 		}()
 	}
 
-	// Give the goroutines a moment to enter Accept, then stop the server.
-	// A ready-channel before Accept() would still race (the goroutine can be
-	// preempted between close(ready) and the blocking Accept call), so a short
-	// sleep is the most honest approximation; the 5 s test timeout is the safety net.
-	time.Sleep(50 * time.Millisecond)
-
 	// Stop() blocks until internal goroutines drain, which only unblock after all
 	// clients detect the disconnect. Run it in a goroutine and capture the error.
 	stopErr := make(chan error, 1)
@@ -786,12 +763,6 @@ func TestListener_DetectsServerClose_WithPool(t *testing.T) {
 		acceptErr <- err
 	}()
 
-	// Give the goroutine a moment to enter Accept, then stop the server.
-	// A ready-channel before Accept() would still race (the goroutine can be
-	// preempted between close(ready) and the blocking Accept call), so a short
-	// sleep is the most honest approximation; the 5 s test timeout is the safety net.
-	time.Sleep(50 * time.Millisecond)
-
 	// Stop() blocks until internal goroutines drain, which only unblock after the
 	// client detects the disconnect. Run it in a goroutine and capture the error.
 	stopErr := make(chan error, 1)
@@ -833,8 +804,12 @@ func TestListenerDialer_V2Protocol(t *testing.T) {
 	assert.True(t, listener.client.IsV2(), "Expected V2 protocol to be used")
 	assert.NotNil(t, listener.client.Session(), "Expected yamux session to be created")
 
-	// Give time for registration to complete
-	time.Sleep(100 * time.Millisecond)
+	// Wait for the server-side handleConnection goroutine to call AddConnection.
+	// Listen() returns once the client handshake completes, but the dialer adds
+	// the connection to its manager asynchronously; polling guarantees readiness.
+	require.Eventually(t, func() bool { return dialer.cm.GetConn() != nil },
+		2*time.Second, 10*time.Millisecond,
+		"connection should become available in the manager")
 
 	// Test that connections work with V2 (streams instead of TCP)
 	done := make(chan struct{})

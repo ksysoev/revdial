@@ -264,8 +264,6 @@ func (d *Dialer) handleV1RegisteredConnection(s *proto.ServerV2) {
 		defer d.cm.RemoveConnection(s.ID())
 
 		<-d.ctx.Done()
-
-		_ = s.Close()
 	}()
 }
 

@@ -2,7 +2,6 @@ package revdial
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -166,8 +165,6 @@ func TestDialer_DialContext_ContextCancelled(t *testing.T) {
 
 	assert.Error(t, err, "DialContext should return an error when the context is cancelled")
 	assert.Nil(t, conn, "DialContext should not return a connection when the context is cancelled")
-
-	fmt.Println("err1", err)
 
 	select {
 	case <-done:
