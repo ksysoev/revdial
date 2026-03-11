@@ -461,7 +461,8 @@ func TestListener_DetectsServerClose(t *testing.T) {
 		acceptErr <- err
 	}()
 
-	// Stop closes the TCP listener which tears down all accepted control connections.
+	// Stop cancels the dialer's context, which closes active control connections and
+	// causes the client-side listener to detect the disconnect and unblock Accept.
 	// We call it in a goroutine because Stop() waits for internal goroutines that
 	// are themselves unblocked only once the client-side detects the disconnect.
 	stopErr := make(chan error, 1)
