@@ -171,8 +171,11 @@ func (c *ClientV2) tryV2Registration(ctx context.Context, id uuid.UUID) error {
 				return
 			default:
 				err := c.handleCommand(ctx)
-				if err != nil && !errors.Is(err, io.EOF) {
-					slog.Error("failed to handle command", slog.Any("error", err))
+				if err != nil {
+					if !errors.Is(err, io.EOF) {
+						slog.Error("failed to handle command", slog.Any("error", err))
+					}
+
 					return
 				}
 			}
@@ -217,8 +220,11 @@ func (c *ClientV2) registerV1(ctx context.Context, id uuid.UUID) error {
 				return
 			default:
 				err := c.handleCommand(ctx)
-				if err != nil && !errors.Is(err, io.EOF) {
-					slog.Error("failed to handle command", slog.Any("error", err))
+				if err != nil {
+					if !errors.Is(err, io.EOF) {
+						slog.Error("failed to handle command", slog.Any("error", err))
+					}
+
 					return
 				}
 			}

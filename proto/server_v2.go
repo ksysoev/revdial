@@ -257,6 +257,24 @@ func (s *ServerV2) SendCustomEvent(eventName string, data any) error {
 	return s.Server.SendCustomEvent(eventName, data)
 }
 
+// Close closes the ServerV2 connection. For V2 connections it closes the yamux
+// session first (which unblocks any in-flight AcceptStream call) and then
+// delegates to the base Server.Close to close the underlying TCP connection.
+// For V1 connections it behaves identically to Server.Close.
+func (s *ServerV2) Close() error {
+	s.mu.RLock()
+	session := s.session
+	s.mu.RUnlock()
+
+	if session != nil {
+		// Closing the session tears down yamux's internal goroutines and
+		// causes AcceptStream to return immediately with an error.
+		_ = session.Close()
+	}
+
+	return s.Server.Close()
+}
+
 // WithMuxConfig sets the multiplexing configuration for V2 connections.
 func WithMuxConfig(config *mux.Config) ServerV2Option {
 	return func(s *ServerV2) {

@@ -28,7 +28,7 @@ func sendRequest(conn io.ReadWriter, req []byte) (byte, error) {
 func readMsg(conn io.Reader) (byte, error) {
 	buf := make([]byte, 2)
 
-	if _, err := conn.Read(buf); err != nil {
+	if _, err := io.ReadFull(conn, buf); err != nil {
 		return 0, fmt.Errorf("failed to read response: %w", err)
 	}
 

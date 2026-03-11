@@ -2,7 +2,6 @@ package revdial
 
 import (
 	"context"
-	"fmt"
 	"net"
 	"testing"
 	"time"
@@ -83,7 +82,6 @@ func TestDialer_DialContext_ConnectionAvailable(t *testing.T) {
 		assert.NoError(t, err, "Dialer should stop without error")
 	}()
 
-	ready := make(chan struct{})
 	done := make(chan struct{})
 
 	go func() {
@@ -92,8 +90,6 @@ func TestDialer_DialContext_ConnectionAvailable(t *testing.T) {
 
 		defer mockListener.Close()
 
-		close(ready)
-
 		conn, err := mockListener.Accept()
 		require.NoError(t, err, "Listener should accept connections")
 		conn.Close()
@@ -101,11 +97,15 @@ func TestDialer_DialContext_ConnectionAvailable(t *testing.T) {
 		close(done)
 	}()
 
-	select {
-	case <-ready:
-	case <-time.After(100 * time.Millisecond):
-		t.Error("expected listener to be started")
-	}
+	// Wait until the connection is registered in the manager before dialling.
+	// Listen() returning only means the client finished its handshake; the server
+	// side adds the connection to cm asynchronously, so we must poll here to
+	// avoid the "no connection is available" race that appears under -race / CI.
+	require.Eventually(t,
+		func() bool { return dialer.cm.GetConn() != nil },
+		time.Second, time.Millisecond,
+		"connection should become available in the manager",
+	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -118,7 +118,7 @@ func TestDialer_DialContext_ConnectionAvailable(t *testing.T) {
 
 	select {
 	case <-done:
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(time.Second):
 		t.Error("expected connection to be accepted")
 	}
 }
@@ -133,7 +133,6 @@ func TestDialer_DialContext_ContextCancelled(t *testing.T) {
 		assert.NoError(t, err, "Dialer should stop without error")
 	}()
 
-	ready := make(chan struct{})
 	done := make(chan struct{})
 
 	go func() {
@@ -144,19 +143,20 @@ func TestDialer_DialContext_ContextCancelled(t *testing.T) {
 
 		defer mockListener.Close()
 
-		close(ready)
-
 		conn, err := mockListener.Accept()
 
 		require.NoError(t, err, "Listener should accept connections")
 		conn.Close()
 	}()
 
-	select {
-	case <-ready:
-	case <-time.After(100 * time.Millisecond):
-		t.Error("expected listener to be started")
-	}
+	// Wait until the connection is registered before calling DialContext with a
+	// cancelled context, so we exercise the cancellation path rather than the
+	// "no connection available" path.
+	require.Eventually(t,
+		func() bool { return dialer.cm.GetConn() != nil },
+		time.Second, time.Millisecond,
+		"connection should become available in the manager",
+	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -166,11 +166,9 @@ func TestDialer_DialContext_ContextCancelled(t *testing.T) {
 	assert.Error(t, err, "DialContext should return an error when the context is cancelled")
 	assert.Nil(t, conn, "DialContext should not return a connection when the context is cancelled")
 
-	fmt.Println("err1", err)
-
 	select {
 	case <-done:
-	case <-time.After(100 * time.Millisecond):
+	case <-time.After(time.Second):
 		t.Error("expected connection to be accepted")
 	}
 }
@@ -185,22 +183,22 @@ func TestDialer_DialContext_FailedToSendConnectCommand(t *testing.T) {
 		assert.NoError(t, err, "Dialer should stop without error")
 	}()
 
-	ready := make(chan struct{})
-
 	go func() {
-		defer close(ready)
-
 		mockListener, err := Listen(context.Background(), dialer.Addr())
 		require.NoError(t, err, "Listener should start without error")
 
-		defer mockListener.Close()
+		// Close immediately so that the control connection is gone by the time
+		// DialContext sends the connect command, triggering the send error path.
+		mockListener.Close()
 	}()
 
-	select {
-	case <-ready:
-	case <-time.After(100 * time.Millisecond):
-		t.Error("expected listener to be started")
-	}
+	// Wait until the connection registers so DialContext can select it, then the
+	// send will fail because the listener closed its side.
+	require.Eventually(t,
+		func() bool { return dialer.cm.GetConn() != nil },
+		time.Second, time.Millisecond,
+		"connection should become available in the manager",
+	)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

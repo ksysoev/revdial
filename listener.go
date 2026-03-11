@@ -5,6 +5,7 @@ import (
 	"crypto/tls"
 	"fmt"
 	"net"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/ksysoev/revdial/mux"
@@ -306,6 +307,32 @@ func WithListenerTLSConfig(config *tls.Config) ListenerOption {
 		l.dialer = &tls.Dialer{
 			NetDialer: d,
 			Config:    config.Clone(),
+		}
+	}
+}
+
+// WithListenerKeepAlive sets the TCP keepalive interval on the listener's shared dialer.
+// Because the dialer is reused for all outbound TCP connections made by this listener
+// (initial control connection, V1 per-accept dials, and V2 pool dials), the keepalive
+// setting applies to every connection, not only the control connection.
+// The interval maps directly to net.Dialer.KeepAlive semantics:
+//   - interval > 0: enable TCP keep-alives with the given period
+//   - interval == 0: use Go's default keep-alive period (15s)
+//   - interval < 0: disable TCP keep-alives
+//
+// Recommended value: 30 * time.Second.
+// This option is composable with WithListenerTLSConfig regardless of application order.
+func WithListenerKeepAlive(interval time.Duration) ListenerOption {
+	return func(l *Listener) {
+		switch d := l.dialer.(type) {
+		case *net.Dialer:
+			d.KeepAlive = interval
+		case *tls.Dialer:
+			if d.NetDialer == nil {
+				d.NetDialer = &net.Dialer{}
+			}
+
+			d.NetDialer.KeepAlive = interval
 		}
 	}
 }

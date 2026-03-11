@@ -122,6 +122,8 @@ func (d *Dialer) Stop() error {
 // DialContext establishes a new connection using the context for control and cancellation.
 // It takes a ctx of type context.Context to manage connection lifecycle.
 // It returns a net.Conn representing the connection and an error if no connection is available or other issues occur.
+// If the command send fails (e.g. the V1 control connection has gone dead), the stale
+// connection is removed from the manager so it does not accumulate over time.
 func (d *Dialer) DialContext(ctx context.Context) (net.Conn, error) {
 	s := d.cm.GetConn()
 
@@ -136,6 +138,8 @@ func (d *Dialer) DialContext(ctx context.Context) (net.Conn, error) {
 
 	err := s.SendConnectCommand(id)
 	if err != nil {
+		// Remove the stale connection so future DialContext calls get a fresh one.
+		d.cm.RemoveConnection(s.ID())
 		return nil, fmt.Errorf("failed to request connection: %w", err)
 	}
 
@@ -150,6 +154,8 @@ func (d *Dialer) DialContext(ctx context.Context) (net.Conn, error) {
 // SendEvent sends a custom event with the given name and payload through an active connection.
 // It takes a context.Context (unused), a name of type string, and a payload of type any.
 // It returns an error if no active connection is available or if sending the event fails.
+// If the send fails (e.g. the V1 control connection has gone dead), the stale connection is
+// removed from the manager so it does not accumulate over time.
 func (d *Dialer) SendEvent(_ context.Context, name string, payload any) error {
 	s := d.cm.GetConn()
 
@@ -159,6 +165,8 @@ func (d *Dialer) SendEvent(_ context.Context, name string, payload any) error {
 
 	err := s.SendCustomEvent(name, payload)
 	if err != nil {
+		// Remove the stale connection so subsequent SendEvent calls get a fresh one.
+		d.cm.RemoveConnection(s.ID())
 		return fmt.Errorf("failed to send event: %w", err)
 	}
 
@@ -218,15 +226,15 @@ func (d *Dialer) handleConnection(ctx context.Context, conn net.Conn) {
 
 	switch s.State() {
 	case proto.StateRegistered:
-		// For V2 connections, we need to handle streams differently
+		// Stop the handshake-phase lifecycle goroutine; connection lifetime is now
+		// managed by the per-protocol handler below.
+		close(done)
+
 		if s.IsV2() {
 			d.handleV2RegisteredConnection(ctx, s)
 		} else {
-			// V1 connection - add to connection manager
-			d.cm.AddConnection(s)
+			d.handleV1RegisteredConnection(s)
 		}
-
-		close(done)
 
 		return
 	case proto.StateBound:
@@ -251,6 +259,24 @@ func (d *Dialer) handleConnection(ctx context.Context, conn net.Conn) {
 	}
 }
 
+// handleV1RegisteredConnection manages the lifetime of a registered V1 control connection.
+// It adds the server to the connection manager and closes it when the dialer context is
+// cancelled, ensuring that the client-side listener detects the disconnect and unblocks its
+// Accept call. Stale connections are also removed eagerly by DialContext and SendEvent when
+// SendConnectCommand or SendCustomEvent fails.
+func (d *Dialer) handleV1RegisteredConnection(s *proto.ServerV2) {
+	d.cm.AddConnection(s)
+
+	d.wg.Add(1)
+
+	go func() {
+		defer d.wg.Done()
+		defer d.cm.RemoveConnection(s.ID())
+
+		<-d.ctx.Done()
+	}()
+}
+
 // handleV2RegisteredConnection handles a registered V2 connection with multiplexing support.
 // It spawns a goroutine to accept incoming streams and match them to connection requests.
 func (d *Dialer) handleV2RegisteredConnection(_ context.Context, s *proto.ServerV2) {
@@ -264,20 +290,33 @@ func (d *Dialer) handleV2RegisteredConnection(_ context.Context, s *proto.Server
 		defer d.wg.Done()
 		defer d.cm.RemoveConnection(s.ID())
 
-		for {
+		// done is closed when this goroutine exits, allowing the closer goroutine
+		// below to terminate early and avoid a goroutine leak per disconnected session.
+		done := make(chan struct{})
+		defer close(done)
+
+		// Close the session when the dialer context is cancelled so that
+		// AcceptStream unblocks and this goroutine can exit cleanly.
+		go func() {
 			select {
 			case <-d.ctx.Done():
-				return
-			default:
-				stream, err := s.AcceptStream()
-				if err != nil {
+				_ = s.Close()
+			case <-done:
+			}
+		}()
+
+		for {
+			stream, err := s.AcceptStream()
+			if err != nil {
+				if d.ctx.Err() == nil {
 					slog.Error("failed to accept stream", slog.Any("error", err))
-					return
 				}
 
-				// Read the bind command from the stream
-				go d.handleV2Stream(d.ctx, stream)
+				return
 			}
+
+			// Read the bind command from the stream
+			go d.handleV2Stream(d.ctx, stream)
 		}
 	}()
 }
